@@ -3,13 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#05070d">
-<meta name="description" content="Halcyon — a living painting that tells the time and the weather.">
-<title>Halcyon</title>
+<meta name="theme-color" content="#04060a">
+<meta name="description" content="AgEnt-F0X — HALCYON Architectural Core. An infinite developer matrix where every repository is a telemetry node.">
+<title>AgEnt-F0X — HALCYON · Architectural Core</title>
 <link rel="manifest" href="manifest.json">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;0,700;1,400&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
 <script type="importmap">
 {
@@ -25,56 +25,127 @@
 <canvas id="scene" aria-hidden="true"></canvas>
 
 <div id="fallback" hidden>
-  <div class="fb-sky"></div>
-  <div class="fb-hills fb-hills-far"></div>
-  <div class="fb-hills fb-hills-near"></div>
-  <div class="fb-water"></div>
+  <div class="fb-grid"></div>
+  <div class="fb-core"></div>
 </div>
 
-<div id="vignette" hidden></div>
-
 <main id="ui">
-  <header class="bar">
-    <div id="wordmark">Halcyon</div>
-    <div class="bar-right">
-      <button id="place-btn" type="button" aria-haspopup="dialog" aria-controls="settings">
-        <span id="place-name">Locating…</span>
-      </button>
-      <button id="gear-btn" type="button" aria-haspopup="dialog" aria-controls="settings" aria-label="Settings">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
-          <circle cx="12" cy="12" r="3.2"></circle>
-          <path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"></path>
-        </svg>
-      </button>
+
+  <header id="topbar">
+    <div id="wordmark" data-magnetic data-cursor-label="HALCYON">AgEnt-F0X<span class="wm-sub">HALCYON // ARCHITECTURAL CORE</span></div>
+    <div id="status-chip" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span class="status-text">SYSTEM STATUS: ONLINE</span>
+      <span class="status-sep" aria-hidden="true">•</span>
+      <span class="status-node">NODE <b id="status-node">—/—</b></span>
     </div>
+    <div id="fps-badge" title="Live performance — press P for the full HUD">— FPS</div>
   </header>
 
-  <section id="clock-block" aria-label="Time">
-    <div id="time" role="timer" aria-label="Current time"></div>
-    <div id="seconds-line" aria-hidden="true"><span id="seconds-fill"></span></div>
-    <div id="date-line"></div>
-    <div id="phase-line"></div>
+  <!-- Left panel: system telemetry for the focused node -->
+  <aside id="telemetry" aria-label="Project telemetry">
+    <div class="tele-head">
+      <p class="tele-kicker"><span id="tele-index">NODE 01</span><span class="kicker-sep">/</span><span id="tele-category">—</span></p>
+      <h1 class="tele-title" id="tele-name">—</h1>
+      <p class="tele-tagline" id="tele-tagline"></p>
+    </div>
+
+    <div class="tele-block">
+      <p class="tele-label">EXECUTIVE SUMMARY <i class="label-src" id="tele-src"></i></p>
+      <p id="tele-summary" class="tele-summary">—</p>
+    </div>
+
+    <div class="tele-block">
+      <p class="tele-label">KEY FEATURES</p>
+      <ul id="tele-features" class="tele-features"></ul>
+    </div>
+
+    <div class="tele-stats" id="tele-stats"></div>
+
+    <div class="tele-actions">
+      <button id="tele-boost" type="button" data-magnetic data-cursor-label="BOOST">
+        <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2 4.5 13.5H11L9.5 22 19 9.5h-6.5L13 2z"/></svg>
+        <span id="tele-boost-count">BOOST</span>
+      </button>
+      <a id="tele-open" class="tele-link" href="#" target="_blank" rel="noopener" data-magnetic data-cursor-label="GITHUB ↗">GITHUB ↗</a>
+    </div>
+
+    <div class="tele-block">
+      <p class="tele-label">CLONE</p>
+      <div class="clonebox">
+        <code id="tele-clone">git clone …</code>
+        <button id="tele-copy" type="button" data-magnetic data-cursor-label="COPY">COPY</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Right panel: interactive tech deck -->
+  <section id="deck" aria-label="Project technical deck">
+    <div class="deck-tabs" role="tablist" aria-label="Deck views">
+      <button class="deck-tab is-on" data-tab="arch" role="tab" aria-selected="true" data-magnetic>ARCHITECTURE</button>
+      <button class="deck-tab" data-tab="readme" role="tab" aria-selected="false" data-magnetic>LIVE README</button>
+      <button class="deck-tab" data-tab="files" role="tab" aria-selected="false" data-magnetic>FILES</button>
+    </div>
+    <div class="deck-body">
+      <div class="deck-panel is-on" data-panel="arch" id="panel-arch" role="tabpanel"></div>
+      <div class="deck-panel" data-panel="readme" id="panel-readme" role="tabpanel">
+        <div class="md" id="readme-body"></div>
+      </div>
+      <div class="deck-panel" data-panel="files" id="panel-files" role="tabpanel">
+        <div id="file-tree" class="file-tree" aria-label="Repository files"></div>
+        <div id="file-view" class="file-view" hidden>
+          <div class="fv-head">
+            <span id="fv-path" class="fv-path"></span>
+            <span id="fv-size" class="fv-size"></span>
+            <button id="fv-close" type="button" aria-label="Close file">✕</button>
+          </div>
+          <pre id="fv-code" class="fv-code"></pre>
+        </div>
+      </div>
+    </div>
+    <div class="deck-foot" id="deck-foot"></div>
   </section>
 
-  <div id="preview-label" hidden><span id="preview-time"></span> · Preview — double-click to return</div>
+  <!-- Bottom command dock -->
+  <nav id="dock" aria-label="Command dock">
+    <div id="node-rail" aria-label="Matrix node selector"></div>
+    <span class="dock-sep" aria-hidden="true"></span>
+    <button id="dock-prev" type="button" aria-label="Previous node" data-magnetic data-cursor-label="PREV">◀</button>
+    <button id="dock-next" type="button" aria-label="Next node" data-magnetic data-cursor-label="NEXT">▶</button>
+    <span class="dock-sep" aria-hidden="true"></span>
+    <div id="sys-clock" aria-label="System clock">
+      <span id="clock-time">--:--:--</span>
+      <span id="clock-date"></span>
+    </div>
+    <button id="palette-btn" type="button" data-magnetic data-cursor-label="CTRL+K">
+      <span class="palette-key">CTRL</span><span class="palette-plus">+</span><span class="palette-key">K</span>
+    </button>
+  </nav>
 
-  <div id="timeline" role="slider" aria-label="Scrub time of day" aria-valuemin="0" aria-valuemax="1440" aria-valuenow="0" tabindex="0">
-    <div class="tl-track"></div>
-    <div class="tl-ticks"></div>
-    <div class="tl-marker" id="tl-marker"></div>
-    <div class="tl-hover" id="tl-hover" hidden></div>
+  <!-- Ctrl+K command palette -->
+  <div id="palette" role="dialog" aria-label="Command palette" aria-hidden="true">
+    <div class="palette-box">
+      <div class="palette-head">
+        <span class="palette-prompt" aria-hidden="true">❯</span>
+        <input id="palette-input" type="text" autocomplete="off" spellcheck="false"
+               aria-label="Command palette input" placeholder="Search nodes — type &gt; for commands">
+        <span class="palette-esc">ESC</span>
+      </div>
+      <div id="palette-results" aria-live="polite"></div>
+      <div class="palette-foot">↑↓ NAVIGATE · ENTER SELECT · &gt; COMMANDS · FOCUS / GITHUB / CLONE / QUALITY</div>
+    </div>
   </div>
 
-  <aside id="settings" role="dialog" aria-modal="false" aria-label="Settings" aria-hidden="true"></aside>
-
+  <div id="toasts" aria-live="polite"></div>
+  <div id="node-pins" aria-label="Matrix node labels"></div>
+  <div id="cursor-ring" aria-hidden="true"><span id="cursor-label"></span></div>
   <div id="hud" hidden></div>
   <div id="key-hint" hidden></div>
-  <div id="live" class="visually-hidden" role="status" aria-live="polite"></div>
 </main>
 
 <div id="fade" aria-hidden="true"></div>
 
-<noscript><p style="position:fixed;inset:0;display:grid;place-items:center;color:#eee;font-family:serif">Halcyon needs JavaScript.</p></noscript>
+<noscript><p style="position:fixed;inset:0;display:grid;place-items:center;color:#F4F1EA;font-family:monospace">HALCYON needs JavaScript.</p></noscript>
 
 <script type="module" src="js/main.js"></script>
 </body>

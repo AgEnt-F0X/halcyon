@@ -1,238 +1,332 @@
-// The ONE shared ShaderMaterial family ("ToonLit") + shared uniforms + canvas textures.
-// Every opaque painterly surface uses this; changing time of day or weather only
-// ever writes uniforms, so nothing recompiles at runtime.
+// Shared uniforms + shader materials for the Architectural Matrix.
+// Every material is compiled once at boot — tier changes drive uniforms and
+// geometry counts only, never shader recompiles. No per-frame allocations.
 
 import * as THREE from 'three';
 
 export function createSharedUniforms() {
   return {
     uTime: { value: 0 },
-    uSunDir: { value: new THREE.Vector3(0.4, 0.5, -0.7) },
-    uMoonDir: { value: new THREE.Vector3(-0.4, -0.2, -0.7) },
-    uSunColor: { value: new THREE.Color(0xfff2d8) },
-    uMoonColor: { value: new THREE.Color(0x8fa3d0) },
-    uSunI: { value: 1 },
-    uMoonI: { value: 0 },
-    uAmbSky: { value: new THREE.Color(0x9ac4e8) },
-    uAmbGnd: { value: new THREE.Color(0x64745e) },
-    uAmbI: { value: 1 },
-    uFogColor: { value: new THREE.Color(0xcfe6f5) },
-    uFogDensity: { value: 0.0026 },
-    uFogBase: { value: 12 },
-    uSkyZenith: { value: new THREE.Color(0x2f86e8) },
-    uSkyHorizon: { value: new THREE.Color(0xa9d8ff) },
-    uGroundTint: { value: new THREE.Color(0xb4bcae) },
-    uWaterTint: { value: new THREE.Color(0x3f7fb8) },
-    uSeasonTint: { value: new THREE.Color(1, 1, 1) },
-    uBlossom: { value: 0 },
-    uSnowGround: { value: 0 },
-    uWindSpeed: { value: 0.25 },
-    uWindDir: { value: new THREE.Vector2(0.85, 0.53) },
-    uLightning: { value: 0 },
-    uNight: { value: 0 },
-    uRain: { value: 0 },
-    uSnow: { value: 0 },
-    uCloudCover: { value: 0.2 },
-    uSunVis: { value: 1 },
-    uMoonVis: { value: 0 },
-    uFlash: { value: 0 },
-    uAurora: { value: 0 },
-    uShaftI: { value: 0 },
+    uPointer: { value: new THREE.Vector2(0, 0) },   // smoothed -1..1 cursor
+    uAccent: { value: new THREE.Color(0x4da6ff) },  // active project accent
+    uCamPos: { value: new THREE.Vector3() },
+    uFocus: { value: 0 },                            // 0..1 focus energy (flights)
+    uActiveNode: { value: -1 },                      // index of the focused rack
+    uScanT: { value: 2 },                            // grid scan-ring progress (>=1 off)
+    uScanOrigin: { value: new THREE.Vector3() },
   };
 }
 
-const TOON_VERT = /* glsl */`
-attribute float aSeed;
-varying vec3 vN, vW, vC;
-varying float vSeed;
-uniform float uTime, uWindSpeed, uSwayAmp, uSwayH;
-uniform vec2 uWindDir;
+// ---------------------------------------------------------------------------
+// Sky dome: one inverted sphere, deep architectural gradient + faint horizon
+// aurora bands. 1 draw call.
+// ---------------------------------------------------------------------------
+const DOME_VERT = /* glsl */`
+varying vec3 vDir;
 void main() {
-  vSeed = aSeed;
-  #ifdef USE_COLOR
-    vC = color;
-  #else
-    vC = vec3(1.0);
-  #endif
-  vec4 local = vec4(position, 1.0);
-  #ifdef USE_INSTANCING
-    local = instanceMatrix * local;
-  #endif
-  vec4 wp = modelMatrix * local;
-  #ifdef SWAY
-    float ph = aSeed * 6.28318;
-    float h = smoothstep(0.0, uSwayH, position.y);
-    float s = uSwayAmp * uWindSpeed * h;
-    float gust = sin(uTime * 0.31 + ph * 0.5) * 0.5 + 0.6;
-    wp.xz += uWindDir * (sin(uTime * 1.45 + ph + position.y * 0.35) * s + gust * s * 0.5);
-  #endif
-  vec3 n = normal;
-  #ifdef USE_INSTANCING
-    n = mat3(instanceMatrix) * n;
-  #endif
-  vN = normalize(mat3(modelMatrix) * n);
-  vW = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
+  vDir = normalize(position);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }`;
 
-const TOON_FRAG = /* glsl */`
-varying vec3 vN, vW, vC;
-varying float vSeed;
-uniform vec3 uSunDir, uMoonDir, uSunColor, uMoonColor, uAmbSky, uAmbGnd, uFogColor, uGroundTint, uSeasonTint;
-uniform float uSunI, uMoonI, uAmbI, uFogDensity, uFogBase, uSnowGround, uBlossom, uNight, uLightning;
-uniform float uSunAmt, uRim, uAlpha;
-float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+const DOME_FRAG = /* glsl */`
+varying vec3 vDir;
+uniform float uTime;
 void main() {
-  vec3 N = normalize(vN);
-  vec3 V = normalize(cameraPosition - vW);
-  vec3 albedo = vC;
-  #ifdef FOLIAGE
-    albedo *= uSeasonTint;
-    float blossom = step(0.8, fract(vSeed * 7.31));
-    albedo = mix(albedo, vec3(1.0, 0.93, 0.96), blossom * uBlossom);
-  #endif
-  #ifdef GROUND
-    albedo *= uGroundTint;
-  #endif
-  #ifdef SNOWCAP
-    float sm = clamp(uSnowGround * smoothstep(0.42, 0.78, N.y), 0.0, 1.0);
-    albedo = mix(albedo, vec3(0.93, 0.95, 1.0), sm);
-  #endif
-  vec3 L = normalize(uSunDir);
-  float ndl = dot(N, L) * 0.5 + 0.5;
-  float bands = 0.34 * smoothstep(0.26, 0.34, ndl) + 0.33 * smoothstep(0.48, 0.56, ndl) + 0.33 * smoothstep(0.70, 0.78, ndl);
-  float shade = 0.35 + 0.65 * bands;
-  vec3 col = albedo * (uAmbSky * (0.62 + 0.38 * N.y) + uAmbGnd * (0.5 - 0.5 * N.y)) * uAmbI;
-  col += albedo * uSunColor * (uSunI * uSunAmt * shade);
-  vec3 Lm = normalize(uMoonDir);
-  float ndm = dot(N, Lm) * 0.5 + 0.5;
-  col += albedo * uMoonColor * (uMoonI * (0.4 + 0.6 * smoothstep(0.3, 0.85, ndm)));
-  float rim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 3.0) * clamp(dot(N, L) + 0.55, 0.0, 1.0);
-  col += uSunColor * (rim * uSunI * uRim);
-  col += vec3(0.9, 0.95, 1.0) * (uLightning * 0.22);
-  float pool = exp(-max(vW.y - uFogBase, 0.0) * 0.05);
-  float fog = 1.0 - exp(-length(cameraPosition - vW) * uFogDensity * (0.45 + pool));
-  col = mix(col, uFogColor, clamp(fog, 0.0, 1.0));
-  col += (hash21(gl_FragCoord.xy) - 0.5) * (2.0 / 255.0);
-  gl_FragColor = vec4(col, uAlpha);
+  float h = clamp(vDir.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 low = vec3(0.016, 0.024, 0.042);
+  vec3 high = vec3(0.004, 0.006, 0.012);
+  vec3 c = mix(low, high, smoothstep(0.0, 0.65, h));
+  float band = sin(vDir.x * 3.0 + uTime * 0.05) * sin(vDir.z * 2.2 - uTime * 0.03);
+  c += vec3(0.010, 0.020, 0.028) * smoothstep(0.35, 0.9, h) * smoothstep(0.2, 1.0, band);
+  gl_FragColor = vec4(c, 1.0);
 }`;
 
-// opts: sway (amp), swayH, foliage, ground, snowCap, sunAmt, rim, transparent, alphaBase, depthWrite
-export function makeToonMaterial(shared, opts = {}) {
-  const defines = {};
-  if (opts.sway) defines.SWAY = '';
-  if (opts.foliage) defines.FOLIAGE = '';
-  if (opts.ground) defines.GROUND = '';
-  if (opts.snowCap) defines.SNOWCAP = '';
-  const uniforms = Object.assign({}, shared, {
-    uSwayAmp: { value: opts.sway || 0 },
-    uSwayH: { value: opts.swayH || 4 },
-    uSunAmt: { value: opts.sunAmt !== undefined ? opts.sunAmt : 1 },
-    uRim: { value: opts.rim !== undefined ? opts.rim : 0.5 },
-    uAlpha: { value: opts.alphaBase !== undefined ? opts.alphaBase : 1 },
+export function createSkyDomeMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: DOME_VERT,
+    fragmentShader: DOME_FRAG,
+    uniforms: { uTime: shared.uTime },
+    side: THREE.BackSide,
+    depthWrite: false,
   });
-  const mat = new THREE.ShaderMaterial({
-    vertexShader: TOON_VERT,
-    fragmentShader: TOON_FRAG,
-    uniforms,
-    defines,
-    vertexColors: true,
-    transparent: !!opts.transparent,
-    depthWrite: opts.depthWrite !== undefined ? opts.depthWrite : true,
+}
+
+// ---------------------------------------------------------------------------
+// Ground grid: one big plane, the whole grid lives in the fragment shader —
+// minor/major lines, glowing world axes, travel pulses and the focus scan
+// ring. Distance-faded from the camera. 1 draw call.
+// ---------------------------------------------------------------------------
+const GRID_VERT = /* glsl */`
+varying vec3 vWorld;
+void main() {
+  vec4 w = modelMatrix * vec4(position, 1.0);
+  vWorld = w.xyz;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+
+const GRID_FRAG = /* glsl */`
+varying vec3 vWorld;
+uniform float uTime;
+uniform vec3 uCamPos;
+uniform vec3 uAccent;
+uniform float uScanT;
+uniform vec3 uScanOrigin;
+
+float gridMask(vec2 p, float scale, float thick) {
+  vec2 q = p / scale;
+  vec2 g = abs(fract(q - 0.5) - 0.5) / fwidth(q);
+  float line = min(g.x, g.y);
+  return 1.0 - clamp(line / thick, 0.0, 1.0);
+}
+
+void main() {
+  vec2 p = vWorld.xz;
+  float minor = gridMask(p, 4.0, 1.3) * 0.26;
+  float major = gridMask(p, 20.0, 1.6) * 0.55;
+
+  // slow luminous pulses travelling along the major lattice
+  float vein = 0.5 + 0.5 * sin(uTime * 0.5 + (vWorld.x + vWorld.z) * 0.045);
+  major *= 0.75 + 0.45 * vein;
+
+  // glowing world axes
+  float axisX = 1.0 - smoothstep(0.0, 0.55, abs(vWorld.z));
+  float axisZ = 1.0 - smoothstep(0.0, 0.55, abs(vWorld.x));
+  float axis = max(axisX, axisZ);
+
+  vec3 col = vec3(0.55, 0.62, 0.72) * minor + vec3(0.78, 0.84, 0.94) * major;
+  col += uAccent * axis * (0.75 + 0.3 * sin(uTime * 1.4));
+
+  // focus scan ring expanding from the focused node
+  float d = distance(p, uScanOrigin.xz);
+  float ring = exp(-pow((d - uScanT * 120.0) * 0.09, 2.0)) * step(uScanT, 1.0);
+  col += uAccent * ring * 0.9;
+
+  // distance fade from the camera, keep the horizon clean
+  float dist = distance(vWorld, uCamPos);
+  float fade = 1.0 - smoothstep(140.0, 520.0, dist);
+  float alpha = clamp(max(max(minor, major), max(axis * 0.9, ring)), 0.0, 1.0) * fade;
+  if (alpha < 0.004) discard;
+  gl_FragColor = vec4(col, alpha);
+}`;
+
+export function createGridMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: GRID_VERT,
+    fragmentShader: GRID_FRAG,
+    uniforms: {
+      uTime: shared.uTime,
+      uCamPos: shared.uCamPos,
+      uAccent: shared.uAccent,
+      uScanT: shared.uScanT,
+      uScanOrigin: shared.uScanOrigin,
+    },
+    transparent: true,
+    depthWrite: false,
   });
-  mat.name = opts.name || 'toon';
-  return mat;
 }
 
-export function ensureSeed(geometry, value = 0.5) {
-  if (!geometry.getAttribute('aSeed')) {
-    const n = geometry.getAttribute('position').count;
-    geometry.setAttribute('aSeed', new THREE.BufferAttribute(new Float32Array(n).fill(value), 1));
-  }
-  if (!geometry.getAttribute('color')) {
-    const n = geometry.getAttribute('position').count;
-    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(n * 3).fill(1), 3));
-  }
-  return geometry;
+// ---------------------------------------------------------------------------
+// Ambient data nodes: ONE THREE.Points cloud of floating motes with per-point
+// phase drift and depth-weighted cursor parallax. 1 draw call.
+// ---------------------------------------------------------------------------
+const PARTICLE_VERT = /* glsl */`
+attribute float aPhase;
+attribute float aSize;
+attribute float aTint;
+uniform float uTime;
+uniform vec2 uPointer;
+varying float vTint;
+varying float vFade;
+void main() {
+  vec3 p = position;
+  p.x += sin(uTime * 0.21 + aPhase) * 1.9;
+  p.y += sin(uTime * 0.33 + aPhase * 1.71) * 1.3;
+  p.z += cos(uTime * 0.17 + aPhase * 0.9) * 1.9;
+  p.x += uPointer.x * (0.6 + position.y * 0.018);
+  p.y += uPointer.y * (0.4 + position.y * 0.012);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  float dist = -mv.z;
+  vFade = 1.0 - smoothstep(120.0, 340.0, dist);
+  vTint = aTint;
+  gl_PointSize = aSize * (160.0 / max(dist, 4.0));
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const PARTICLE_FRAG = /* glsl */`
+varying float vTint;
+varying float vFade;
+uniform vec3 uAccent;
+void main() {
+  vec2 uv = gl_PointCoord - 0.5;
+  float d = length(uv);
+  float alpha = smoothstep(0.5, 0.05, d) * vFade;
+  if (alpha < 0.01) discard;
+  vec3 cool = vec3(0.62, 0.72, 0.85);
+  vec3 col = mix(cool, uAccent, vTint * 0.75);
+  gl_FragColor = vec4(col, alpha * 0.8);
+}`;
+
+export function createParticleMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: PARTICLE_VERT,
+    fragmentShader: PARTICLE_FRAG,
+    uniforms: { uTime: shared.uTime, uPointer: shared.uPointer, uAccent: shared.uAccent },
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
 }
 
-// Per-triangle hue/lightness jitter baked into vertex colors: the brush-stroke feel.
-export function jitterVertexColors(geometry, baseHex, rng, jitter = 0.06) {
-  const pos = geometry.getAttribute('position');
-  const idx = geometry.getIndex();
-  const triCount = (idx ? idx.count : pos.count) / 3;
-  const colors = new Float32Array(pos.count * 3);
-  const base = new THREE.Color(baseHex);
-  const c = new THREE.Color();
-  for (let t = 0; t < triCount; t++) {
-    const j = 1 + (rng() * 2 - 1) * jitter;
-    const hb = (rng() * 2 - 1) * jitter * 0.5;
-    c.setRGB(
-      Math.min(1, Math.max(0, base.r * j + hb)),
-      Math.min(1, Math.max(0, base.g * j + hb * 0.7)),
-      Math.min(1, Math.max(0, base.b * j - hb * 0.5)),
-    );
-    for (let k = 0; k < 3; k++) {
-      const vi = idx ? idx.getX(t * 3 + k) : t * 3 + k;
-      colors[vi * 3] = c.r; colors[vi * 3 + 1] = c.g; colors[vi * 3 + 2] = c.b;
-    }
-  }
-  geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  return geometry;
+// ---------------------------------------------------------------------------
+// Data beams: merged vertical gradient planes rising from each project node
+// into the sky, with rising energy stripes. Per-vertex accent colour + a
+// per-quad node id for the active-node boost. 1 draw call for ALL beams.
+// ---------------------------------------------------------------------------
+const BEAM_VERT = /* glsl */`
+attribute vec3 aColor;
+attribute float aNode;
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vNode;
+void main() {
+  vUv = uv;
+  vColor = aColor;
+  vNode = aNode;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const BEAM_FRAG = /* glsl */`
+varying vec2 vUv;
+varying vec3 vColor;
+varying float vNode;
+uniform float uTime;
+uniform float uFocus;
+uniform float uActiveNode;
+void main() {
+  float edge = 1.0 - smoothstep(0.0, 0.5, abs(vUv.x - 0.5) * 2.0);
+  float grad = smoothstep(0.0, 0.35, vUv.y) * (1.0 - smoothstep(0.55, 1.0, vUv.y));
+  float rise = fract(vUv.y * 2.0 - uTime * 0.22);
+  float stripe = smoothstep(0.0, 0.45, rise) * smoothstep(1.0, 0.55, rise);
+  float act = 0.55 + 0.45 * step(abs(vNode - uActiveNode), 0.25);
+  float alpha = edge * grad * (0.10 + stripe * 0.22) * act * (0.7 + uFocus * 0.9);
+  if (alpha < 0.004) discard;
+  gl_FragColor = vec4(vColor, alpha);
+}`;
+
+export function createBeamMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: BEAM_VERT,
+    fragmentShader: BEAM_FRAG,
+    uniforms: {
+      uTime: shared.uTime,
+      uFocus: shared.uFocus,
+      uActiveNode: shared.uActiveNode,
+    },
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
 }
 
-// Canvas-generated sprite textures (no external images allowed).
-export function makeSpriteTexture(kind) {
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d');
-  if (kind === 'glow') {
-    const gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    gr.addColorStop(0, 'rgba(255,255,255,0.85)');
-    gr.addColorStop(0.35, 'rgba(255,255,255,0.28)');
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  } else if (kind === 'smoke') {
-    for (const [x, y, r, a] of [[64, 64, 60, 0.5], [46, 70, 34, 0.3], [84, 58, 30, 0.28]]) {
-      const gr = g.createRadialGradient(x, y, 0, x, y, r);
-      gr.addColorStop(0, `rgba(255,255,255,${a})`);
-      gr.addColorStop(1, 'rgba(255,255,255,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, S, S);
-    }
-  } else if (kind === 'streak') {
-    for (let i = 0; i < 24; i++) {
-      const x = S / 2 + (i - 12) * 1.2;
-      const a = Math.exp(-(i - 12) * (i - 12) / 40) * 0.75;
-      g.fillStyle = `rgba(255,255,255,${a})`;
-      g.fillRect(x, 8, 1, S - 16);
-    }
-    const gr = g.createLinearGradient(0, 0, 0, S);
-    gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(0.2, 'rgba(0,0,0,0)');
-    gr.addColorStop(0.8, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,1)');
-    g.globalCompositeOperation = 'destination-out';
-    g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  } else if (kind === 'flake') {
-    const gr = g.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-    gr.addColorStop(0, 'rgba(255,255,255,1)');
-    gr.addColorStop(0.3, 'rgba(255,255,255,0.7)');
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr; g.fillRect(0, 0, S, S);
-  } else if (kind === 'shaft') {
-    g.save();
-    g.translate(S / 2, S / 2); g.scale(0.22, 1);
-    const gr = g.createRadialGradient(0, 0, 0, 0, 0, S / 2);
-    gr.addColorStop(0, 'rgba(255,255,255,0.55)');
-    gr.addColorStop(0.6, 'rgba(255,255,255,0.12)');
-    gr.addColorStop(1, 'rgba(255,255,255,0)');
-    g.fillStyle = gr; g.fillRect(-S, -S, S * 2, S * 2);
-    g.restore();
-    const fade = g.createLinearGradient(0, 0, 0, S);
-    fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(0.85, 'rgba(0,0,0,1)');
-    g.globalCompositeOperation = 'destination-out';
-    g.fillStyle = fade; g.fillRect(0, 0, S, S);
-  }
-  const tex = new THREE.CanvasTexture(c);
-  tex.wrapS = tex.wrapT = THREE.ClampToEdgeWrapping;
-  return tex;
+// ---------------------------------------------------------------------------
+// Rack materials: merged server-rack slabs (one solid mesh, per-vertex colour,
+// per-vertex node id) + merged edge lines. 2 draw calls for ALL racks.
+// ---------------------------------------------------------------------------
+const RACK_VERT = /* glsl */`
+attribute vec3 aColor;
+attribute float aNode;
+varying vec3 vColor;
+varying float vNode;
+void main() {
+  vColor = aColor;
+  vNode = aNode;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const RACK_FRAG = /* glsl */`
+varying vec3 vColor;
+varying float vNode;
+uniform float uActiveNode;
+uniform float uFocus;
+uniform float uTime;
+void main() {
+  float act = 1.0 - step(0.25, abs(vNode - uActiveNode));
+  float breathe = 0.9 + 0.1 * sin(uTime * 2.0 + vNode * 1.3);
+  float glow = (0.62 + act * 1.15) * breathe * (1.0 + uFocus * 0.35);
+  gl_FragColor = vec4(vColor * glow, 1.0);
+}`;
+
+export function createRackSolidMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: RACK_VERT,
+    fragmentShader: RACK_FRAG,
+    uniforms: {
+      uActiveNode: shared.uActiveNode,
+      uFocus: shared.uFocus,
+      uTime: shared.uTime,
+    },
+  });
+}
+
+const RACKLINE_FRAG = /* glsl */`
+varying vec3 vColor;
+varying float vNode;
+uniform float uActiveNode;
+uniform float uFocus;
+uniform float uTime;
+void main() {
+  float act = 1.0 - step(0.25, abs(vNode - uActiveNode));
+  float breathe = 0.85 + 0.15 * sin(uTime * 2.4 + vNode * 1.9);
+  float glow = (0.5 + act * 1.6) * breathe * (1.0 + uFocus * 0.4);
+  gl_FragColor = vec4(vColor * glow, 1.0);
+}`;
+
+export function createRackLineMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: RACK_VERT,
+    fragmentShader: RACKLINE_FRAG,
+    uniforms: {
+      uActiveNode: shared.uActiveNode,
+      uFocus: shared.uFocus,
+      uTime: shared.uTime,
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// The Architectural Core: fresnel-glass inner polyhedron (outer wireframe and
+// gyroscope rings are plain line materials built in matrix.js).
+// ---------------------------------------------------------------------------
+const CORE_VERT = /* glsl */`
+varying vec3 vNormal;
+varying vec3 vView;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  vNormal = normalize(normalMatrix * normal);
+  vView = normalize(-mv.xyz);
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const CORE_FRAG = /* glsl */`
+varying vec3 vNormal;
+varying vec3 vView;
+uniform vec3 uAccent;
+uniform float uTime;
+void main() {
+  float fres = pow(1.0 - abs(dot(vNormal, vView)), 2.2);
+  float pulse = 0.85 + 0.15 * sin(uTime * 1.8);
+  vec3 col = mix(vec3(0.05, 0.08, 0.13), uAccent, fres * 0.9) * pulse;
+  gl_FragColor = vec4(col, 0.25 + fres * 0.75);
+}`;
+
+export function createCoreMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: CORE_VERT,
+    fragmentShader: CORE_FRAG,
+    uniforms: { uAccent: shared.uAccent, uTime: shared.uTime },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
 }

@@ -1,73 +1,66 @@
-# Halcyon
+# HALCYON — Architectural Core
 
-A living painting that works as a clock. The whole screen is a real-time 3D valley —
-pines, a lake, a cabin with a lantern, three hazy ridges and snow peaks — rendered in
-WebGL with a painterly low-poly style. The light, sky, water and weather all follow
-your **actual local time** and the **current weather** (Open-Meteo, no API key).
+**Halcyon is the name of this website framework itself — it is not a project.**
+It powers the *Infinite Architectural Core & System Matrix* portfolio for
+[`AgEnt-F0X`](https://github.com/AgEnt-F0X): a real-time WebGL developer matrix
+where every public repository becomes an architectural server-rack node with a
+data beam, and selecting it teleports the camera along its lane.
 
 ## Run it
 
-Because the app uses ES modules, it must be served over HTTP (not opened as a
-`file://` page). From this folder:
+The app uses ES modules, so serve it over HTTP (not `file://`). From this
+folder:
 
 ```bash
-python -m http.server 8000
-# then open http://localhost:8000
+python devserver.py
+# → http://localhost:8430  (set PORT=xxxx to change)
 ```
 
-Any static server works (`npx serve`, `php -S`, `caddy file-server`, …). For development,
-`python devserver.py` serves the same thing with cache headers disabled, which avoids
-stale module caching while iterating.
+`devserver.py` is stdlib-only and doubles as the telemetry backend:
 
-Internet access is needed for Three.js (pinned to 0.160.0 via CDN import map) and the
-weather API. To vendor Three.js locally for fully offline use, download:
-
-- `three.module.js` from `https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js` → `vendor/three.module.js`
-- `BufferGeometryUtils.js` from `https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/utils/BufferGeometryUtils.js` → `vendor/BufferGeometryUtils.js` (edit its `three` import to `../three.module.js`)
-
-and change the import map in `index.html` to `"three": "./vendor/three.module.js"`,
-`"three/addons/": "./vendor/"`. A service worker also caches the shell + last weather
-response once the site has been visited.
-
-## Controls
-
-| Input | Action |
+| Endpoint | What it does |
 | --- | --- |
-| Move pointer | Subtle parallax |
-| Drag on the scene | Look around (±12° yaw / ±6° pitch, auto-recenters after 4 s) |
-| Drag the bottom timeline | Preview any time of day — the whole scene follows |
-| Double-click timeline / `Esc` | Return to live time |
-| `P` | Performance HUD (fps, frame time, draw calls, triangles, tier, DPR) |
-| `W` | Cycle weather previews: clear → partly → overcast → fog → rain → storm → snow → live |
-| `T` | Cycle season previews: spring → summer → autumn → winter → real |
-| Gear / place name (top-right) | Settings: quality, 12/24 h, °C/°F, location search & geolocation, reduced motion, sound |
+| `GET /api/projects` | Public repos for `AgEnt-F0X`, enriched with language, topics, stars, forks, size, last push, the latest GitHub Actions status (when `GITHUB_TOKEN` is set via env or `.env`) **and the raw README.md text** for every repo. Identity repos (`halcyon`, the owner account) are filtered out server-side. Cached to `.cache/` with a 10-minute TTL and stale-cache fallback on API failure. |
+| `GET /api/tree` | `?repo=NAME` — full recursive file tree from the GitHub trees API, cached 10 min. |
+| `GET /api/file` | `?repo=NAME&path=PATH` — raw text file content (capped at 400 KB), cached 10 min. |
+| `GET/POST /api/pulse` | Visitor "boost" reactions per project, persisted to `.cache/pulse.json`. |
 
-The place name button also opens the location search. Geolocation is only requested
-after an explicit click. Choices persist in `localStorage`.
+Any static server also works (`python -m http.server`, `npx serve`, GitHub
+Pages): the client automatically falls back to calling `api.github.com`
+directly, then to a localStorage cache, then to an offline seed — the matrix is
+never empty. Identity filtering (`halcyon` / `AgEnt-F0X`) is enforced again
+client-side in `js/github-service.js`.
 
-## Notes
+## Architecture
 
-- **Quality** auto-detects via a 2 s startup benchmark plus CPU/memory hints, then
-  continuously scales resolution (0.6–1.5 DPR). Low/Medium/High force fixed tiers
-  (High adds MSAA + grass; Low skips the post pass and uses a CSS vignette).
-- **Reduced motion** honours `prefers-reduced-motion` or can be forced in settings.
-- **No WebGL?** The clock, scrubber and settings keep working over a CSS-gradient
-  scene; the page recovers automatically if the context is restored.
-- Weather is cached for 15 minutes and falls back to the last known state offline.
+- `js/main.js` — bootstrap + render loop. `THREE.WebGLRenderer` runs with
+  `powerPreference: "high-performance"` (forces the discrete GPU on hybrid
+  laptops) and the pixel ratio is **locked at 1.0** — resolution rescaling is
+  the primary stutter source on i5-7200U / 920MX-class hardware.
+- `js/scene/matrix.js` — the Global Grid Matrix: infinite shader grid, ambient
+  data-node particles, distant monolith skyline and the central Architectural
+  Core. Everything batched: ~7 draw calls for the whole environment.
+- `js/scene/nodes.js` — project racks. All server racks merge into one solid
+  mesh + one line mesh + one beam mesh (3 draw calls), with per-vertex accent
+  colours and node ids. DOM pins project names into screen space.
+- `js/scene/camera.js` — spring-damped teleportation rig: selecting a node
+  glides the camera down its data lane to the rack. Cursor parallax, drag
+  look, free orbit around the core.
+- `js/scene/materials.js` — one shared uniform family; tier changes only ever
+  touch uniforms and draw ranges, never shader recompiles.
+- `js/quality.js` — 45-frame rolling FPS buffer, tier stepping
+  (potato/low/medium/high), eco throttling, low-spec governor. Pixel ratio
+  stays locked; tiers gate features only.
+- `js/github-service.js` — data layer: repos + README parsing (executive
+  summary, features, tech stack), a minimal markdown renderer for the Live
+  README tab, lazy tree/file loading, identity filter.
+- `js/ui/showcase.js` — left telemetry panel, right tech deck (Architecture /
+  Live README / Files), bottom command dock (node rail + system clock) and the
+  `Ctrl+K` command palette.
+- `js/ui/interactions.js` — magnetic cursor, rack raycast hover/teleport,
+  wheel-to-step node navigation, pointer parallax.
 
-## Files
+## Keys
 
-```
-index.html
-css/style.css
-js/main.js            bootstrap, loop, visibility, fallback, intro
-js/config.js          palettes, tiers, world constants, helpers
-js/time.js            timezone display, solar position, moon phase, day phases
-js/weather.js         Open-Meteo fetch/cache/mapping, location
-js/quality.js         benchmark, tiers, dynamic resolution, HUD
-js/audio.js           synthesised ambience (off by default)
-js/scene/…            sky, terrain, water, forest, cabin, clouds, weatherfx,
-                      stars, birds, camera, post, materials (shared ToonLit)
-js/ui/…               clock, scrubber, settings
-manifest.json, sw.js  installable PWA
-```
+`1-9` jump to node · `←/→` step nodes · `wheel` step nodes · `O` orbit ·
+`Z` zen · `P` perf HUD · `Ctrl+K` command palette · `Esc` close overlays
