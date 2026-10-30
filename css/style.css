@@ -394,7 +394,7 @@ body.ui-in #rail { opacity: 1; }
 /* ---------------------------------------------------------------------------
    Pinned chapters — the Remix.run engine
 --------------------------------------------------------------------------- */
-.chapter { --csec: #F4F1EA; --cacc: #E5A93C; }
+.chapter { --csec: #F4F1EA; --cacc: #E5A93C; position: relative; }
 .track { height: 240vh; }
 .stage {
   position: sticky;
@@ -403,13 +403,30 @@ body.ui-in #rail { opacity: 1; }
   overflow: hidden;
 }
 
-/* phase A — kinetic title */
+/* giant outlined watermark index — parallax behind the cards */
+.wm-num {
+  position: absolute;
+  left: -1.5vw;
+  bottom: -4vh;
+  z-index: 1;
+  font-family: var(--serif);
+  font-size: 18vw;
+  line-height: 0.8;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+  will-change: transform, opacity;
+  user-select: none;
+}
+
+/* phase A — kinetic title, left column */
 .phase-a {
   position: absolute;
-  left: 7vw;
-  top: 16vh;
-  width: min(620px, 46vw);
+  left: 6vw;
+  top: 22vh;
+  width: min(480px, 38vw);
   z-index: 3;
+  pointer-events: none; /* editorial layer — presses pass through to the sculpture */
 }
 .pa-left {
   opacity: 0;
@@ -498,59 +515,128 @@ body.ui-in #rail { opacity: 1; }
   opacity: 0;
 }
 
-/* phase B — the live sandbox */
-.sandbox-wrap {
+/* phase B — the compact interactive deck (never covers the sculpture) */
+.deck {
   position: absolute;
   right: 5vw;
   top: 50%;
-  margin-top: -21vh;
-  width: min(600px, 46vw);
+  margin-top: -25vh;
+  width: min(440px, 40vw);
   z-index: 4;
   opacity: 0;
-  transform-origin: 78% 50%;
-  will-change: transform, opacity;
-}
-.sandbox {
+  transform-origin: 82% 50%;
+  will-change: transform, opacity, filter;
   background: var(--panel);
   border: 1px solid var(--line);
   border-top: 1px solid color-mix(in srgb, var(--csec) 55%, transparent);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
-  will-change: filter;
+  display: flex;
+  flex-direction: column;
+  height: min(72vh, 640px);
 }
-.sb-head {
+/* animated SVG corner crosshairs */
+.corner {
+  position: absolute;
+  width: 12px; height: 12px;
+  color: var(--cacc);
+  opacity: 0.75;
+  pointer-events: none;
+  animation: corner-pulse 2.8s ease-in-out infinite;
+}
+.corner svg { width: 100%; height: 100%; display: block; stroke: currentColor; stroke-width: 1.4; fill: none; }
+.corner.c-tl { top: -6px; left: -6px; }
+.corner.c-tr { top: -6px; right: -6px; animation-delay: .7s; }
+.corner.c-bl { bottom: -6px; left: -6px; animation-delay: 1.4s; }
+.corner.c-br { bottom: -6px; right: -6px; animation-delay: 2.1s; }
+@keyframes corner-pulse {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.25); }
+}
+/* glowing progress beam across the deck top — sweeps in phase C */
+.deck-beam {
+  position: absolute;
+  top: -1px; left: 0;
+  width: 100%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cacc), transparent);
+  box-shadow: 0 0 10px var(--cacc);
+  transform: scaleX(0);
+  transform-origin: left;
+  pointer-events: none;
+}
+.deck-head {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 10px 14px;
+  padding: 11px 14px 10px;
   border-bottom: 1px solid var(--line);
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
   color: var(--dim);
 }
-.sb-dot {
+.deck-head b { color: var(--ivory); font-weight: 700; }
+.deck-dot {
   width: 6px; height: 6px;
   border-radius: 50%;
   background: var(--csec);
   box-shadow: 0 0 8px var(--csec);
   animation: pulse-dot 1.6s ease-in-out infinite;
 }
-.sb-label { color: var(--csec); font-weight: 700; }
-.sb-hint { margin-left: auto; color: var(--faint); }
+.deck-live { margin-left: auto; color: var(--cacc); font-size: 8.5px; letter-spacing: 0.22em; }
+.deck-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--line);
+  flex: none;
+}
+.deck-tab {
+  flex: 1;
+  padding: 9px 4px 8px;
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--faint);
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  transition: color .25s, border-color .25s, background .25s;
+}
+.deck-tab:hover { color: var(--dim); }
+.deck-tab.is-on {
+  color: var(--csec);
+  border-bottom-color: var(--csec);
+  background: color-mix(in srgb, var(--csec) 8%, transparent);
+}
+.deck-panels { position: relative; flex: 1; min-height: 0; }
+.dpanel {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 14px;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(6px);
+  transition: opacity .3s var(--ease-out), transform .3s var(--ease-out), visibility .3s;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ghost) transparent;
+}
+.dpanel.is-on { opacity: 1; visibility: visible; transform: none; }
+.dpanel::-webkit-scrollbar { width: 4px; }
+.dpanel::-webkit-scrollbar-thumb { background: var(--ghost); }
+.dpanel[data-panel="sim"] { overflow: hidden; padding: 0; }
 .sb-canvas {
   display: block;
   width: 100%;
-  height: 300px;
+  height: 236px;
   background: rgba(0, 0, 0, 0.30);
   cursor: crosshair;
 }
-.sb-controls { min-height: 42px; padding: 8px 12px; border-top: 1px solid var(--line); }
+.sb-controls { min-height: 40px; padding: 8px 12px; border-top: 1px solid var(--line); }
 .sb-controls:empty { display: none; }
-.sb-controls-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sb-controls-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .sb-btn {
-  padding: 7px 12px;
-  font-size: 9px;
+  padding: 6px 11px;
+  font-size: 8.5px;
   font-weight: 700;
   letter-spacing: 0.16em;
   color: var(--ivory);
@@ -565,7 +651,7 @@ body.ui-in #rail { opacity: 1; }
   border-color: var(--csec);
   box-shadow: 0 0 14px color-mix(in srgb, var(--csec) 50%, transparent);
 }
-.sb-asl { min-width: 38px; }
+.sb-asl { min-width: 34px; }
 .sb-slider {
   display: flex;
   align-items: center;
@@ -574,56 +660,13 @@ body.ui-in #rail { opacity: 1; }
   letter-spacing: 0.14em;
   color: var(--faint);
 }
-.sb-slider input[type="range"] { width: 120px; accent-color: var(--csec); }
-.sb-hint-inline { font-size: 9px; letter-spacing: 0.12em; color: var(--faint); }
+.sb-slider input[type="range"] { width: 110px; accent-color: var(--csec); }
+.sb-hint-inline { font-size: 8.5px; letter-spacing: 0.12em; color: var(--faint); }
 .sb-count { font-size: 9px; letter-spacing: 0.14em; color: var(--faint); }
 .sb-count b { color: var(--csec); }
 .sb-count i { font-style: normal; color: var(--cacc); }
 .sb-conf { font-size: 9px; letter-spacing: 0.12em; color: var(--faint); }
 .sb-conf b { color: var(--csec); }
-
-/* phase C — deep architecture sheet */
-.phase-c {
-  position: absolute;
-  inset: 7vh 6vw;
-  z-index: 5;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-top: 1px solid color-mix(in srgb, var(--cacc) 55%, transparent);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.55);
-  opacity: 0;
-  pointer-events: none;
-  will-change: transform, opacity;
-  display: flex;
-  flex-direction: column;
-}
-.pc-head {
-  display: flex;
-  align-items: baseline;
-  gap: 16px;
-  padding: 16px 22px 14px;
-  border-bottom: 1px solid var(--line);
-}
-.pc-title {
-  font-family: var(--serif);
-  font-size: 26px;
-  color: var(--ivory);
-}
-.pc-sub { font-size: 9px; letter-spacing: 0.22em; color: var(--cacc); }
-.pc-grid {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 1.15fr 1fr;
-  gap: 26px;
-  padding: 18px 22px 20px;
-  overflow: hidden;
-}
-.pc-col { min-height: 0; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--ghost) transparent; padding-right: 6px; }
-.pc-col::-webkit-scrollbar { width: 4px; }
-.pc-col::-webkit-scrollbar-thumb { background: var(--ghost); }
 .pc-label {
   margin: 0 0 10px;
   font-size: 9px;
@@ -1069,12 +1112,36 @@ body.ui-in #rail { opacity: 1; }
 body.low-spec-mode #status-chip, body.low-spec-mode #fps-badge,
 body.low-spec-mode #palette-btn, body.low-spec-mode #sound-btn,
 body.low-spec-mode .palette-box, body.low-spec-mode #tuner,
-body.low-spec-mode .sandbox, body.low-spec-mode .phase-c,
+body.low-spec-mode .deck,
 body.low-spec-mode .chip, body.low-spec-mode .hero-stats span,
 body.low-spec-mode .bento-card {
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   background: var(--panel-solid);
+}
+
+/* ---------------------------------------------------------------------------
+   Zen Inspect — hold click-and-drag on the canvas: UI dissolves, you spin
+--------------------------------------------------------------------------- */
+body.zen-hold #topbar, body.zen-hold #rail, body.zen-hold .deck,
+body.zen-hold .phase-a, body.zen-hold #bento-section .bento-head {
+  opacity: 0.15 !important;
+  pointer-events: none !important;
+  transition: opacity .45s ease;
+}
+body.zen-hold .wm-num { opacity: 0 !important; }
+body.zen-hold::after {
+  content: "ZEN INSPECT — DRAG TO SPIN · RELEASE TO RETURN";
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  z-index: 50;
+  font-size: 9px;
+  letter-spacing: 0.24em;
+  color: var(--faint);
+  animation: pulse-dot 2s ease-in-out infinite;
+  pointer-events: none;
 }
 
 body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::after {
@@ -1083,8 +1150,8 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
 }
 
 @media (max-width: 1180px) {
-  .phase-a { width: min(520px, 50vw); }
-  .sandbox-wrap { width: min(520px, 48vw); }
+  .phase-a { width: min(420px, 40vw); }
+  .deck { width: min(420px, 44vw); }
 }
 @media (max-width: 940px) {
   #rail { display: none; }
@@ -1093,15 +1160,14 @@ body.reduced-motion *, body.reduced-motion *::before, body.reduced-motion *::aft
   #hero { padding: 110px 6vw 60px; }
   .phase-a { left: 6vw; right: 6vw; top: 11vh; width: auto; }
   .laser { display: none; }
-  .sandbox-wrap {
+  .deck {
     right: 4vw; left: 4vw;
     top: auto;
-    bottom: 4vh;
+    bottom: 3vh;
     margin-top: 0;
     width: auto;
+    height: min(56vh, 460px);
   }
-  .sb-canvas { height: 200px; }
-  .phase-c { inset: 5vh 4vw; }
-  .pc-grid { grid-template-columns: 1fr; overflow-y: auto; }
+  .sb-canvas { height: 170px; }
   #site-foot { flex-direction: column; align-items: flex-start; gap: 8px; }
 }

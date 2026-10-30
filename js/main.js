@@ -57,11 +57,11 @@ const ctx = {
 // ---- world modules ----
 const matrix = createMatrix(ctx);
 const nodes = createNodes(ctx);
-const rig = createCameraRig(ctx);
-const post = renderer ? createPost(ctx) : null;
-
 ctx.matrix = matrix;
 ctx.nodes = nodes;
+const rig = createCameraRig(ctx); // camera reads ctx.nodes for click shockwaves
+const post = renderer ? createPost(ctx) : null;
+
 ctx.rig = rig;
 ctx.post = post;
 
@@ -103,24 +103,6 @@ window.addEventListener('halcyon:projects-ready', (e) => {
 const scroll = showcase.scroll;
 const ptr = interactions.pointerTarget;
 const ptrSmooth = { x: 0, y: 0 };
-
-// ray from the camera through the cursor, intersected with the field plane
-const rayDir = new THREE.Vector3();
-const ndc = new THREE.Vector2();
-function updateMouseWorld() {
-  ndc.set(ptrSmooth.x, ptrSmooth.y);
-  rayDir.set(ndc.x, ndc.y, 0.5).unproject(camera).sub(camera.position).normalize();
-  const planeY = 8;
-  const denom = Math.abs(rayDir.y) < 1e-4 ? 1e-4 : rayDir.y;
-  const t = (planeY - camera.position.y) / denom;
-  if (t > 0 && t < 800) {
-    shared.uMouseWorld.value.set(
-      camera.position.x + rayDir.x * t,
-      planeY,
-      camera.position.z + rayDir.z * t,
-    );
-  }
-}
 
 // ---------- resize / visibility ----------
 let resizeTimer = 0;
@@ -199,7 +181,6 @@ function tick(nowMs) {
   ptrSmooth.x += (ptr.x - ptrSmooth.x) * Math.min(1, dt * 5);
   ptrSmooth.y += (ptr.y - ptrSmooth.y) * Math.min(1, dt * 5);
   shared.uMouse.value.set(ptrSmooth.x, ptrSmooth.y);
-  updateMouseWorld();
 
   // scroll velocity drives the shader warp + post aberration
   shared.uScrollVelocity.value = scroll.velNorm;

@@ -2,7 +2,7 @@
 // - App shell + CDN assets: precached, then served Stale-While-Revalidate.
 // - /api/* telemetry: network-first with cache fallback, so the last GitHub /
 //   README / tree payload always survives an offline moment.
-const CACHE = 'halcyon-v4-flowfield';
+const CACHE = 'halcyon-v5-ferrofluid';
 const CORE = [
   './',
   './index.html',

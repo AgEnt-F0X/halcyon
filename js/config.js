@@ -178,10 +178,10 @@ export const FEATURED_PROJECTS = {
 // tiers gate particle counts, ribbon tessellation and the post pass.
 // ---------------------------------------------------------------------------
 export const TIERS = {
-  potato: { name: 'Potato', pr: 1.0, post: false, msaa: 0, particles: 900,  ribbon: [70, 34],  fbmOct: 2, cap30: true,  shadows: false },
-  low:    { name: 'Low',    pr: 1.0, post: false, msaa: 0, particles: 1600, ribbon: [120, 60],  fbmOct: 2, cap30: false, shadows: false },
-  medium: { name: 'Medium', pr: 1.0, post: true,  msaa: 0, particles: 2500, ribbon: [180, 90],  fbmOct: 3, cap30: false, shadows: false },
-  high:   { name: 'High',   pr: 1.0, post: true,  msaa: 4, particles: 2500, ribbon: [220, 110], fbmOct: 4, cap30: false, shadows: false },
+  potato: { name: 'Potato', pr: 1.0, post: false, msaa: 0, particles: 1400, cap30: true,  shadows: false },
+  low:    { name: 'Low',    pr: 1.0, post: false, msaa: 0, particles: 2600, cap30: false, shadows: false },
+  medium: { name: 'Medium', pr: 1.0, post: true,  msaa: 0, particles: 4000, cap30: false, shadows: false },
+  high:   { name: 'High',   pr: 1.0, post: true,  msaa: 4, particles: 4000, cap30: false, shadows: false },
 };
 
 // ---------------------------------------------------------------------------

@@ -386,6 +386,9 @@ class HalcyonServer(Handler):
 class ThreadingTCPServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+    # the ES-module graph fires ~20 concurrent requests on cold load;
+    # the default backlog of 5 refuses connections and kills the page
+    request_queue_size = 64
 
 
 if __name__ == "__main__":

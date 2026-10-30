@@ -1,29 +1,30 @@
-// HALCYON shader family — custom GLSL atmospheric flow field.
-// One shared uniform object drives every material: the world's palette, the
-// scroll velocity warp and the cursor field all live here. Materials are
-// compiled once per tier (FBM_OCT define changes only on tier switches).
+// HALCYON shader family — the Ferrofluid Core engine.
+// Ashima simplex noise, 2-octave domain warping, magnetic mouse spikes,
+// Inigo Quilez cosine iridescence, sharp Fresnel rims, fwidth grid overlays,
+// curved topographic floor with rolling shockwaves, and the particle stream.
+// Compiled once; chapter changes only ever write uniforms.
 
 import * as THREE from 'three';
 
 export function createSharedUniforms() {
   return {
     uTime: { value: 0 },
-    uWaveSpeed: { value: 1 },          // tuner: time scale of the field
-    uTurbulence: { value: 1 },         // tuner: curl/noise amplitude
-    uScrollVelocity: { value: 0 },     // signed, normalized -1.5..1.5
-    uMouse: { value: new THREE.Vector2(0, 0) },      // NDC
-    uMouseWorld: { value: new THREE.Vector3(0, 10, 0) }, // cursor on the field plane
+    uWaveSpeed: { value: 1 },          // tuner: global field speed
+    uTurbulence: { value: 1 },         // tuner: particle turbulence
+    uScrollVelocity: { value: 0 },     // signed normalized scroll velocity
+    uMouse: { value: new THREE.Vector2(0, 0) },        // NDC cursor
+    uMouse3D: { value: new THREE.Vector3(0, 0.4, 3) }, // cursor on the sculpture
     uColorPrimary: { value: new THREE.Color('#06070A') },   // background ink
     uColorSecondary: { value: new THREE.Color('#F4F1EA') }, // primary glow
     uColorAccent: { value: new THREE.Color('#E5A93C') },    // secondary accent
-    uFormationF: { value: 0 },          // damped float, morphs formations
+    uFormationF: { value: 0 },         // damped particle mode float
     uParticleSize: { value: 1 },
     uAspect: { value: 1.6 },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Ashima 3D simplex noise + fBm (shared GLSL chunk)
+// Ashima 3D simplex noise (shared GLSL chunk)
 // ---------------------------------------------------------------------------
 export const NOISE_GLSL = /* glsl */`
 vec3 mod289(vec3 x) { return x - floor(x * (1.0 / 289.0)) * 289.0; }
@@ -73,307 +74,370 @@ float snoise(vec3 v) {
   m = m * m;
   return 42.0 * dot(m * m, vec4(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3)));
 }
-
-float fbm(vec3 p) {
-  float f = 0.0;
-  float a = 0.5;
-  for (int i = 0; i < FBM_OCT; i++) {
-    f += a * snoise(p);
-    p = p * 2.02 + vec3(11.3, 7.7, 3.1);
-    a *= 0.5;
-  }
-  return f;
-}
 `;
 
 // ---------------------------------------------------------------------------
-// Flow-field background: one fullscreen triangle behind everything. fBm
-// topographic bands, cursor ripple, scroll-velocity domain warp.
+// THE FERROFLUID CORE — IcosahedronGeometry(2.6, 64) with 2-octave domain-
+// warped simplex displacement, magnetic mouse spikes, IQ cosine iridescence,
+// sharp Fresnel rim, specular highlights and an fwidth lat/long grid overlay.
 // ---------------------------------------------------------------------------
-const FLOW_VERT = /* glsl */`
-varying vec2 vUv;
-void main() {
-  vUv = position.xy * 0.5 + 0.5;
-  gl_Position = vec4(position.xy, 0.9999, 1.0);
-}`;
-
-const FLOW_FRAG = /* glsl */`
-varying vec2 vUv;
-uniform float uTime, uWaveSpeed, uTurbulence, uScrollVelocity, uAspect;
-uniform vec2 uMouse;
-uniform vec3 uColorPrimary, uColorSecondary, uColorAccent;
+const CORE_VERT = /* glsl */`
+varying vec3 vWorld;
+varying vec3 vNormalW;
+varying vec3 vObj;
+varying float vNoise;
+varying float vDisp;
+uniform float uTime, uMorphSpeed, uNoiseFreq, uAmp;
+uniform float uMouseInfluence, uSpike;
+uniform vec3 uMouse3D;
 ${NOISE_GLSL}
+
 void main() {
-  vec2 st = vUv - 0.5;
-  vec2 p = st * vec2(uAspect, 1.0) * 2.1;
-  float t = uTime * 0.045 * uWaveSpeed;
-  vec3 q = vec3(p * 1.25, t);
-  // scroll velocity warps the field domain along the scroll axis
-  q.y += uScrollVelocity * 0.35;
-  q.x += uScrollVelocity * 0.12;
-  float n = fbm(q);
+  vec3 p = position;
+  vec3 n = normal;
 
-  // cursor ripple: a soft ring expelling from the pointer
-  float md = length(st * vec2(uAspect, 1.0) - uMouse * vec2(uAspect, 1.0) * 0.5);
-  n += exp(-md * 6.0) * sin(md * 26.0 - uTime * 3.4) * 0.13 * uTurbulence;
+  // 2-octave domain warping of the noise domain
+  vec3 q = p * uNoiseFreq;
+  vec3 w1 = vec3(
+    snoise(q + vec3(0.0, 0.0, uTime * 0.05)),
+    snoise(q + vec3(5.2, 1.3, -uTime * 0.04)),
+    snoise(q + vec3(-3.1, 7.7, uTime * 0.03)));
+  vec3 w2 = vec3(
+    snoise(q * 2.1 + w1 * 0.9 + vec3(uTime * 0.03, 0.0, 0.0)),
+    snoise(q * 2.1 + w1 * 0.9 + vec3(0.0, uTime * 0.026, 4.4)),
+    snoise(q * 2.1 + w1 * 0.9 + vec3(8.8, 0.0, -uTime * 0.02)));
+  vec3 warped = q + w1 * 0.42 + w2 * 0.22;
 
-  // topographic contour lines carved out of the noise field
-  float band = fract(n * 5.0);
-  float line = 1.0 - smoothstep(0.0, 0.10, abs(band - 0.5));
+  // silk undulation along the normal
+  float n1 = snoise(warped + vec3(0.0, uTime * uMorphSpeed, 0.0));
+  float n2 = 0.5 * snoise(warped * 2.3 - vec3(0.0, uTime * uMorphSpeed * 1.45, 0.0));
+  float disp = (n1 + n2) * uAmp;
 
-  vec3 col = uColorPrimary;
-  col = mix(col, uColorPrimary + uColorSecondary * 0.085, smoothstep(-0.7, 0.9, n));
-  col += uColorSecondary * line * (0.05 + 0.20 * smoothstep(0.15, 0.85, n));
-  col += uColorAccent * pow(max(n, 0.0), 2.4) * 0.22;
+  // magnetic ferrofluid pull toward the cursor
+  vec4 world4 = modelMatrix * vec4(p, 1.0);
+  vec3 world = world4.xyz;
+  float md = distance(world, uMouse3D);
+  float pull = exp(-md * md * 0.42) * uMouseInfluence;
+  vec3 pullDir = (uMouse3D - world) / max(md, 0.0001);
 
-  // subtle grain to kill banding
-  float g = fract(sin(dot(vUv, vec2(12.9898, 78.233)) + uTime) * 43758.5453);
-  col += (g - 0.5) * 0.012;
-  gl_FragColor = vec4(col, 1.0);
-}`;
+  p += n * disp + pullDir * pull * uSpike;
 
-export function createFlowFieldMaterial(shared, fbmOct = 3) {
-  return new THREE.ShaderMaterial({
-    vertexShader: FLOW_VERT,
-    fragmentShader: FLOW_FRAG,
-    uniforms: {
-      uTime: shared.uTime,
-      uWaveSpeed: shared.uWaveSpeed,
-      uTurbulence: shared.uTurbulence,
-      uScrollVelocity: shared.uScrollVelocity,
-      uAspect: shared.uAspect,
-      uMouse: shared.uMouse,
-      uColorPrimary: shared.uColorPrimary,
-      uColorSecondary: shared.uColorSecondary,
-      uColorAccent: shared.uColorAccent,
-    },
-    defines: { FBM_OCT: Math.max(2, Math.min(4, fbmOct | 0)) },
-    depthTest: false,
-    depthWrite: false,
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Displaced topographic wave mesh: a big XZ plane whose vertices ride fBm —
-// silk undulation, cursor repel ripples, scroll-velocity swell — shaded with
-// elevation contour lines in the chapter palette.
-// ---------------------------------------------------------------------------
-const RIBBON_VERT = /* glsl */`
-varying vec3 vW;
-varying float vElev;
-varying float vRidge;
-uniform float uTime, uWaveSpeed, uTurbulence, uScrollVelocity;
-uniform vec3 uMouseWorld;
-${NOISE_GLSL}
-void main() {
-  vec3 pos = position;
-  float t = uTime * 0.06 * uWaveSpeed;
-  vec3 q = vec3(pos.x * 0.016, pos.z * 0.02, t);
-  q.y += uScrollVelocity * 0.4;
-  float n = fbm(q);
-  // cursor repel: a travelling ripple ring on the silk
-  float md = distance(pos.xz, uMouseWorld.xz);
-  float ripple = exp(-md * 0.055) * sin(md * 0.85 - uTime * 4.2) * 2.4 * uTurbulence;
-  float elev = n * 8.5 * (0.55 + 0.45 * uTurbulence) + ripple;
-  pos.y += elev;
-  vElev = elev;
-  vRidge = n;
-  vec4 w = modelMatrix * vec4(pos, 1.0);
-  vW = w.xyz;
+  vNoise = n1 + n2;
+  vDisp = disp + pull * uSpike * 0.5;
+  vObj = position;
+  vNormalW = normalize(mat3(modelMatrix) * n);
+  vec4 w = modelMatrix * vec4(p, 1.0);
+  vWorld = w.xyz;
   gl_Position = projectionMatrix * viewMatrix * w;
 }`;
 
-const RIBBON_FRAG = /* glsl */`
-varying vec3 vW;
-varying float vElev;
-varying float vRidge;
-uniform vec3 uColorPrimary, uColorSecondary, uColorAccent;
-uniform vec3 uMouseWorld;
-uniform float uScrollVelocity;
+const CORE_FRAG = /* glsl */`
+varying vec3 vWorld;
+varying vec3 vNormalW;
+varying vec3 vObj;
+varying float vNoise;
+varying float vDisp;
+uniform float uTime, uFaceted, uGridI, uGridF;
+uniform vec3 uPalA, uPalB, uPalC, uPalD;
+uniform vec3 uRimColor, uSpecColor;
+
 void main() {
-  float bands = fract(vElev * 0.75);
-  float line = 1.0 - smoothstep(0.0, 0.14, abs(bands - 0.5));
+  // faceted (derivative) vs smooth normals — geodesic mode flips this
+  vec3 flatN = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+  vec3 N = normalize(mix(normalize(vNormalW), flatN, uFaceted));
+  vec3 V = normalize(cameraPosition - vWorld);
 
-  vec3 col = uColorPrimary;
-  col = mix(col, uColorSecondary * 0.30, smoothstep(-6.0, 9.0, vElev) * 0.5);
-  col += uColorSecondary * line * 0.26;
-  col += uColorAccent * smoothstep(0.5, 1.0, vRidge) * 0.38;
+  // Inigo Quilez cosine iridescent palette
+  float t = vNoise * 0.32 + vDisp * 0.14 + uTime * 0.018 + vObj.y * 0.055;
+  vec3 iri = uPalA + uPalB * cos(6.28318 * (uPalC * t + uPalD));
 
-  // accent heat where the cursor presses the field
-  float md = distance(vW.xz, uMouseWorld.xz);
-  col += uColorAccent * exp(-md * 0.09) * 0.30;
+  // base metal: dark chrome folded with the iridescence
+  vec3 col = mix(iri * 0.22, iri, smoothstep(-0.7, 1.1, vNoise) * 0.85);
+  col += vec3(0.045, 0.05, 0.062); // obsidian lift
 
-  // velocity chromatic hint: crimson/purple split on fast scroll
-  col += uColorAccent * abs(uScrollVelocity) * 0.10 * line;
+  // sharp fresnel rim
+  float fres = pow(1.0 - abs(dot(N, V)), 3.0);
+  col += uRimColor * fres * 1.55;
 
-  float dist = distance(vW, cameraPosition);
-  float fade = 1.0 - smoothstep(70.0, 330.0, dist);
-  gl_FragColor = vec4(col, fade * 0.92);
+  // specular highlight
+  vec3 L = normalize(vec3(0.45, 0.85, 0.55));
+  vec3 H = normalize(L + V);
+  float spec = pow(max(dot(N, H), 0.0), 72.0);
+  col += uSpecColor * spec * 1.15;
+
+  // secondary spec from below (molten bounce)
+  vec3 L2 = normalize(vec3(-0.4, -0.6, 0.35));
+  float spec2 = pow(max(dot(N, normalize(L2 + V)), 0.0), 34.0);
+  col += uRimColor * spec2 * 0.35;
+
+  // dynamic lat/long wireframe grid overlay (fwidth antialiased)
+  float u = atan(vObj.z, vObj.x) / 6.28318 + 0.5;
+  float v = vObj.y / 5.2 + 0.5;
+  vec2 g = vec2(u * 18.0 * uGridF, v * 12.0 * uGridF);
+  vec2 gw = abs(fract(g - 0.5) - 0.5) / max(fwidth(g), vec2(1e-4));
+  float grid = 1.0 - clamp(min(gw.x, gw.y) / 1.4, 0.0, 1.0);
+  col += uRimColor * grid * uGridI * (0.5 + 0.5 * fres);
+
+  gl_FragColor = vec4(col, 1.0);
 }`;
 
-export function createRibbonMaterial(shared, fbmOct = 3) {
+export function createCoreMaterial(shared) {
   return new THREE.ShaderMaterial({
-    vertexShader: RIBBON_VERT,
-    fragmentShader: RIBBON_FRAG,
+    vertexShader: CORE_VERT,
+    fragmentShader: CORE_FRAG,
     uniforms: {
       uTime: shared.uTime,
-      uWaveSpeed: shared.uWaveSpeed,
-      uTurbulence: shared.uTurbulence,
-      uScrollVelocity: shared.uScrollVelocity,
-      uMouseWorld: shared.uMouseWorld,
-      uColorPrimary: shared.uColorPrimary,
+      uMouse3D: shared.uMouse3D,
+      // per-chapter sculpt parameters (lerped by matrix.js)
+      uMorphSpeed: { value: 0.32 },
+      uNoiseFreq: { value: 1.15 },
+      uAmp: { value: 0.34 },
+      uMouseInfluence: { value: 0.0 },
+      uSpike: { value: 0.9 },
+      uFaceted: { value: 0.0 },
+      uGridI: { value: 0.18 },
+      uGridF: { value: 1.0 },
+      uPalA: { value: new THREE.Vector3(0.03, 0.03, 0.04) },
+      uPalB: { value: new THREE.Vector3(0.55, 0.50, 0.45) },
+      uPalC: { value: new THREE.Vector3(1.0, 1.0, 1.0) },
+      uPalD: { value: new THREE.Vector3(0.00, 0.06, 0.12) },
+      uRimColor: { value: new THREE.Color('#E5A93C') },
+      uSpecColor: { value: new THREE.Color('#4DD8FF') },
+    },
+  });
+}
+
+// Per-chapter sculpt presets: [freq, amp, speed, faceted, gridI, gridF, rim, spec, palA, palB, palC, palD]
+import { Color, Vector3 } from 'three';
+export const CORE_PRESETS = [
+  { // 0 hero — liquid chrome obsidian, molten gold + electric cyan
+    freq: 1.15, amp: 0.34, speed: 0.32, faceted: 0, gridI: 0.16, gridF: 1.0,
+    rim: '#E5A93C', spec: '#4DD8FF',
+    palA: [0.03, 0.03, 0.04], palB: [0.55, 0.50, 0.45],
+    palC: [1.0, 1.0, 1.0], palD: [0.00, 0.06, 0.12],
+  },
+  { // 1 apex — carbon + crimson laser ripples, fast rhythmic spikes
+    freq: 2.8, amp: 0.5, speed: 1.6, faceted: 0, gridI: 0.24, gridF: 1.4,
+    rim: '#FF3366', spec: '#9D4EDD',
+    palA: [0.02, 0.02, 0.03], palB: [0.5, 0.28, 0.42],
+    palC: [1.0, 0.9, 1.1], palD: [0.55, 0.30, 0.75],
+  },
+  { // 2 studypulse — harmonic cymatics crystalline, indigo + mint
+    freq: 1.6, amp: 0.3, speed: 0.5, faceted: 0, gridI: 0.3, gridF: 1.8,
+    rim: '#00F5D4', spec: '#6366F1',
+    palA: [0.02, 0.04, 0.05], palB: [0.32, 0.55, 0.5],
+    palC: [1.0, 1.0, 0.9], palD: [0.25, 0.7, 0.45],
+  },
+  { // 3 kaamsaarthi — geodesic faceted globe, emerald + warm amber meridians
+    freq: 2.2, amp: 0.42, speed: 0.22, faceted: 1, gridI: 0.5, gridF: 1.2,
+    rim: '#10B981', spec: '#F97316',
+    palA: [0.03, 0.04, 0.03], palB: [0.35, 0.5, 0.38],
+    palC: [1.0, 0.85, 1.0], palD: [0.45, 0.15, 0.6],
+  },
+  { // 4 asl — synaptic neural plasma, electric green + sky filaments
+    freq: 3.4, amp: 0.24, speed: 1.1, faceted: 0, gridI: 0.34, gridF: 2.4,
+    rim: '#10F587', spec: '#38BDF8',
+    palA: [0.02, 0.03, 0.03], palB: [0.4, 0.6, 0.45],
+    palC: [1.0, 1.1, 0.9], palD: [0.65, 0.85, 0.3],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Topographic horizon floor: curved wireframe grid with rolling scroll
+// shockwaves. PlaneGeometry(60, 40, 90, 60) at y = -4.4.
+// ---------------------------------------------------------------------------
+const FLOOR_VERT = /* glsl */`
+varying vec3 vWorld;
+varying vec2 vUvF;
+uniform float uTime, uScrollVelocity;
+${NOISE_GLSL}
+void main() {
+  vec3 p = position;
+  // gentle topographic breathing
+  float n = snoise(vec3(p.x * 0.09, p.y * 0.12, uTime * 0.06));
+  p.z += n * 0.55;
+  vec4 w = modelMatrix * vec4(p, 1.0);
+  // curve the horizon down for deep perspective
+  w.y -= pow(max(w.z + 14.0, 0.0) * 0.062, 2.0);
+  vWorld = w.xyz;
+  vUvF = uv;
+  gl_Position = projectionMatrix * viewMatrix * w;
+}`;
+
+const FLOOR_FRAG = /* glsl */`
+varying vec3 vWorld;
+varying vec2 vUvF;
+uniform float uTime;
+uniform vec3 uColorSecondary, uColorAccent;
+uniform vec4 uPulse0, uPulse1, uPulse2; // x: originZ, y: radius, z: strength, w: unused
+
+float gridLine(vec2 p, float scale, float thick) {
+  vec2 q = p / scale;
+  vec2 g = abs(fract(q - 0.5) - 0.5) / max(fwidth(q), vec2(1e-4));
+  return 1.0 - clamp(min(g.x, g.y) / thick, 0.0, 1.0);
+}
+
+float pulseGlow(vec4 P, vec3 w) {
+  if (P.z < 0.004) return 0.0;
+  float d = abs(distance(w.xz, vec2(0.0, P.x)) - P.y);
+  return exp(-d * d * 0.55) * P.z;
+}
+
+void main() {
+  float minor = gridLine(vWorld.xz, 0.8, 1.4) * 0.20;
+  float major = gridLine(vWorld.xz, 4.0, 1.7) * 0.42;
+
+  float pu = max(max(pulseGlow(uPulse0, vWorld), pulseGlow(uPulse1, vWorld)), pulseGlow(uPulse2, vWorld));
+
+  vec3 col = uColorSecondary * (minor + major);
+  col += uColorAccent * pu * 1.4;
+
+  // horizon + near fade
+  float dist = distance(vWorld, cameraPosition);
+  float fade = (1.0 - smoothstep(18.0, 52.0, dist)) * smoothstep(-6.0, -1.5, vWorld.z - cameraPosition.z + 16.0);
+  float alpha = clamp(minor + major + pu, 0.0, 1.0) * fade;
+  if (alpha < 0.004) discard;
+  gl_FragColor = vec4(col, alpha);
+}`;
+
+export function createFloorMaterial(shared) {
+  return new THREE.ShaderMaterial({
+    vertexShader: FLOOR_VERT,
+    fragmentShader: FLOOR_FRAG,
+    uniforms: {
+      uTime: shared.uTime,
       uColorSecondary: shared.uColorSecondary,
       uColorAccent: shared.uColorAccent,
+      uPulse0: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uPulse1: { value: new THREE.Vector4(0, 0, 0, 0) },
+      uPulse2: { value: new THREE.Vector4(0, 0, 0, 0) },
     },
-    defines: { FBM_OCT: Math.max(2, Math.min(4, fbmOct | 0)) },
     transparent: true,
     depthWrite: false,
   });
 }
 
 // ---------------------------------------------------------------------------
-// Curl-noise particle stream: ONE Points draw call. Every formation is pure
-// vertex-shader math; uFormationF morphs continuously between neighbouring
-// formations; a 3-sample noise field adds curl-like flow turbulence.
+// Particle stream: positions arrive fully integrated from the CPU spring
+// engine; the GPU adds cursor proximity glow, size attenuation, palette mix.
 // ---------------------------------------------------------------------------
 const STREAM_VERT = /* glsl */`
-attribute vec4 aRand;
-attribute float aId;
-varying float vMix;
+attribute float aSeed;
+varying float vSeed;
+varying float vGlow;
 varying float vFade;
-uniform float uTime, uWaveSpeed, uTurbulence, uScrollVelocity, uParticleSize;
-uniform float uFormationF;
-uniform vec3 uMouseWorld;
-${NOISE_GLSL}
-
-vec3 formation(int f, float id, vec4 r, float t) {
-  float a = r.x * 6.28318;
-  float b = r.y * 6.28318;
-  float c = r.z;
-  if (f <= 0) {
-    // HERO — sweeping horizontal vortex ribbon across the horizon
-    float R = 58.0 + c * 48.0;
-    float ang = a + t * (0.05 + c * 0.12) * (r.w < 0.5 ? 1.0 : -1.0);
-    return vec3(cos(ang) * R, sin(a * 3.0 + t * 0.7) * 5.0 + (c - 0.5) * 8.0, sin(ang) * R * 0.62);
-  }
-  if (f == 1) {
-    // APEX — high-speed aerodynamic wind-tunnel stream ribbons
-    float x = mod(c * 340.0 + t * (46.0 + r.w * 80.0), 340.0) - 170.0;
-    float lane = floor(r.x * 7.0);
-    return vec3(x, (lane - 3.0) * 4.4 + sin(b + t * 2.0) * 1.1, (r.y - 0.5) * 64.0);
-  }
-  if (f == 2) {
-    // STUDYPULSE — double-helix harmonic sine-wave pulse lattice
-    float u = c;
-    float strand = step(0.5, r.x);
-    float ang = u * 12.56 + strand * 3.14159 + t * 0.45;
-    float rad = 16.0 + r.w * 8.0;
-    vec3 p = vec3((u - 0.5) * 250.0, cos(ang) * rad, sin(ang) * rad);
-    p.y += (r.z - 0.5) * 7.0 + sin(u * 20.0 + t * 2.2) * 1.4;
-    return p;
-  }
-  if (f == 3) {
-    // KAAMSAARTHI — curved planetary geodesic network with pulsing hubs
-    float i = floor(id * 911.0);
-    float phi = acos(clamp(1.0 - 2.0 * (i + 0.5) / 911.0, -1.0, 1.0));
-    float theta = 6.28318 * i * 0.618034;
-    float R = 50.0 + r.w * 9.0;
-    vec3 p = vec3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta)) * R;
-    float hub = step(0.962, r.x);
-    p *= 1.0 + hub * 0.10 * sin(t * 3.2 + b);
-    p.y += 8.0;
-    return p;
-  }
-  if (f == 4) {
-    // ASL / AI — multi-layered neural network synapse cloud
-    float layer = floor(r.x * 4.0);
-    float li = fract(id * 0.618034);
-    vec3 p = vec3(
-      (layer - 1.5) * 46.0,
-      (li - 0.5) * 58.0,
-      (fract(id * 0.381966) - 0.5) * 58.0
-    );
-    p += vec3(sin(t * 0.8 + b * 4.0), cos(t * 0.7 + a * 4.0), sin(t * 0.9 + c * 7.0)) * (1.3 + r.w);
-    return p;
-  }
-  // fallback — ORBITAL ring field (bin sorter & everything else)
-  float ring = floor(r.y * 3.0);
-  float R = 32.0 + ring * 22.0 + (c - 0.5) * 7.0;
-  float dir = mod(r.x * 7.0, 2.0) < 1.0 ? 1.0 : -1.0;
-  float ang = a + t * (0.16 - ring * 0.035) * dir;
-  return vec3(cos(ang) * R, (r.z - 0.5) * 26.0 + sin(ang * 2.0 + t) * 3.2, sin(ang) * R);
-}
-
+uniform float uTime, uParticleSize, uFormationF;
+uniform vec3 uMouse3D;
 void main() {
-  float t = uTime * uWaveSpeed;
-  float ff = clamp(uFormationF, 0.0, 5.0);
-  int fA = int(floor(ff));
-  int fB = int(min(ff + 1.0, 5.0));
-  float mixB = smoothstep(0.0, 1.0, ff - floor(ff));
-  vec3 pA = formation(fA, aId, aRand, t);
-  vec3 pB = formation(fB, aId, aRand, t);
-  vec3 p = mix(pA, pB, mixB);
-
-  // curl-like flow turbulence from three offset noise taps
-  vec3 np = p * 0.02 + vec3(0.0, uTime * 0.035, 0.0);
-  vec3 flow = vec3(
-    snoise(np + vec3(0.0, 31.4, 0.0)),
-    snoise(np + vec3(0.0, 7.7, 0.0)),
-    snoise(np + vec3(0.0, 19.2, 0.0))
-  );
-  p += flow * 2.6 * uTurbulence;
-  p += vec3(sin(uTime * 0.5 + aId * 41.0), cos(uTime * 0.4 + aId * 17.0), sin(uTime * 0.6 + aId * 29.0)) * 0.55;
-
-  // scroll kinetic: vertical stretch + shear with velocity
-  p.y += uScrollVelocity * 2.2 * (aRand.w - 0.5);
-  p.x += uScrollVelocity * 1.2 * (aRand.z - 0.5);
-
-  // cursor repel in world space
-  vec3 dm = p - uMouseWorld;
-  float dl = length(dm);
-  p += (dm / max(dl, 0.001)) * exp(-dl * 0.085) * 6.5 * uTurbulence;
-
+  vec3 p = position;
+  // organic micro-drift so nothing ever looks frozen
+  p.x += sin(uTime * 0.6 + aSeed * 41.0) * 0.05;
+  p.y += cos(uTime * 0.5 + aSeed * 27.0) * 0.05;
+  p.z += sin(uTime * 0.7 + aSeed * 19.0) * 0.05;
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   float dist = -mv.z;
-  gl_PointSize = uParticleSize * (0.9 + aRand.z * 2.3) * (150.0 / max(dist, 6.0));
+  float md = distance(p, uMouse3D);
+  vGlow = exp(-md * 0.55);
+  vFade = clamp(1.0 - smoothstep(16.0, 34.0, dist), 0.1, 1.0);
+  vSeed = aSeed;
+  gl_PointSize = uParticleSize * (1.1 + aSeed * 2.4) * (52.0 / max(dist, 2.0));
   gl_Position = projectionMatrix * mv;
-  vMix = clamp(length(flow) * 0.45 + aRand.w * 0.2, 0.0, 1.0);
-  vFade = clamp(1.0 - smoothstep(90.0, 270.0, dist), 0.12, 1.0);
 }`;
 
 const STREAM_FRAG = /* glsl */`
-varying float vMix;
+varying float vSeed;
+varying float vGlow;
 varying float vFade;
 uniform vec3 uColorSecondary, uColorAccent;
+uniform float uFormationF;
 void main() {
   vec2 uv = gl_PointCoord - 0.5;
   float d = length(uv);
-  float core = smoothstep(0.5, 0.02, d);
-  float alpha = core * vFade;
-  if (alpha < 0.012) discard;
-  vec3 col = mix(uColorSecondary, uColorAccent, vMix);
-  col += vec3(0.9) * smoothstep(0.16, 0.0, d) * 0.55; // hot white core
-  gl_FragColor = vec4(col, alpha * 0.85);
+  float alpha = smoothstep(0.5, 0.04, d) * vFade;
+  if (alpha < 0.015) discard;
+  vec3 col = mix(uColorSecondary, uColorAccent, fract(vSeed * 7.31));
+  col += vec3(0.85) * smoothstep(0.14, 0.0, d) * 0.5; // hot core
+  col += uColorAccent * vGlow * 0.9;                  // cursor proximity
+  gl_FragColor = vec4(col, alpha * (0.55 + vGlow * 0.45));
 }`;
 
-export function createStreamMaterial(shared, fbmOct = 3) {
+export function createParticleMaterial(shared) {
   return new THREE.ShaderMaterial({
     vertexShader: STREAM_VERT,
     fragmentShader: STREAM_FRAG,
     uniforms: {
       uTime: shared.uTime,
-      uWaveSpeed: shared.uWaveSpeed,
-      uTurbulence: shared.uTurbulence,
-      uScrollVelocity: shared.uScrollVelocity,
       uParticleSize: shared.uParticleSize,
       uFormationF: shared.uFormationF,
-      uMouseWorld: shared.uMouseWorld,
+      uMouse3D: shared.uMouse3D,
       uColorSecondary: shared.uColorSecondary,
       uColorAccent: shared.uColorAccent,
     },
-    defines: { FBM_OCT: Math.max(2, Math.min(4, fbmOct | 0)) },
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Lead-trajectory trail + geodesic route arcs (additive lines)
+// ---------------------------------------------------------------------------
+export function createTrailMaterial(shared) {
+  return new THREE.LineBasicMaterial({
+    color: new THREE.Color('#E5A93C'),
+    transparent: true,
+    opacity: 0.75,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
+export function createArcMaterial(shared) {
+  return new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.85,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Gyroscope torus rings: thin additive metal tubes tinted by the live palette
+// ---------------------------------------------------------------------------
+export function createRingTorusMaterial(shared, slot = 0) {
+  const tint = new THREE.Color(slot === 0 ? '#E5A93C' : '#F4F1EA');
+  return new THREE.ShaderMaterial({
+    vertexShader: /* glsl */`
+      varying vec3 vN;
+      varying vec3 vW;
+      void main() {
+        vec4 w = modelMatrix * vec4(position, 1.0);
+        vW = w.xyz;
+        vN = normalize(mat3(modelMatrix) * normal);
+        gl_Position = projectionMatrix * viewMatrix * w;
+      }`,
+    fragmentShader: /* glsl */`
+      varying vec3 vN;
+      varying vec3 vW;
+      uniform vec3 uTint;
+      uniform vec3 uColorSecondary, uColorAccent;
+      uniform float uTime;
+      void main() {
+        vec3 V = normalize(cameraPosition - vW);
+        float fres = pow(1.0 - abs(dot(normalize(vN), V)), 2.0);
+        float pulse = 0.75 + 0.25 * sin(uTime * 2.1 + vW.y * 2.2 + vW.x * 1.7);
+        vec3 col = uTint * (0.5 + fres * 1.4) * pulse;
+        gl_FragColor = vec4(col, 0.55 + fres * 0.4);
+      }`,
+    uniforms: {
+      uTint: { value: tint },
+      uTime: shared.uTime,
+      uColorSecondary: shared.uColorSecondary,
+      uColorAccent: shared.uColorAccent,
+    },
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
   });
 }

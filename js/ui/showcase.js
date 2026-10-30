@@ -1,9 +1,9 @@
 // The Scrollytelling Engine: inertial smooth scroll with velocity skew,
-// Remix.run-style pinned project chapters (kinetic title → live sandbox →
-// deep architecture), an Ollivere.co bento reel with throwable stickers,
-// a persistent timeline rail, the Ctrl+K command palette, the Shader &
-// Physics Tuner drawer, and six bespoke interactive canvas simulations —
-// one per project, hand-tailored to what each repository actually does.
+// pinned chapters framed around the 3D centerpiece — a compact interactive
+// deck (LIVE SIMULATION / README FEATURES / FILE TREE tabs) that never covers
+// the sculpture, giant parallax watermark indexes, SVG corner crosshairs and
+// glowing deck progress beams. Also owns the bento reel, the timeline rail,
+// the Ctrl+K palette, the Shader & Physics Tuner and the system clock.
 
 import {
   CATEGORIES, PALETTES, paletteFor, formationFor, FORMATIONS,
@@ -31,7 +31,7 @@ const EXT_LANG = {
 };
 
 // ===========================================================================
-// LIVE SIMULATIONS — one bespoke sandbox per project
+// LIVE SIMULATIONS — one bespoke canvas sandbox per project
 // ===========================================================================
 
 const SIMS = [
@@ -48,12 +48,11 @@ function simFor(name) {
   return FALLBACK_SIM;
 }
 
-// ---- shared canvas plumbing ------------------------------------------------
 function simCtx(canvas) {
   return {
     fit() {
-      const w = Math.min(canvas.clientWidth || 640, 780);
-      const h = Math.min(canvas.clientHeight || 400, 500);
+      const w = Math.min(canvas.clientWidth || 420, 560);
+      const h = Math.min(canvas.clientHeight || 240, 320);
       if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
         canvas.width = w; canvas.height = h;
       }
@@ -70,7 +69,6 @@ function createApexSim(canvas, project, colors) {
   const rpm = new Float32Array(N), spd = new Float32Array(N), ers = new Float32Array(N);
   let head = 0, acc = 0, speed = 0, drs = false, throttle = 0.35;
   const sectors = [41.82, 38.95, 45.31].map(v => ({ cur: v, best: v - 0.4 - Math.random() * 0.5 }));
-  let last = performance.now();
 
   const controls = document.createElement('div');
   controls.className = 'sb-controls-row';
@@ -79,10 +77,7 @@ function createApexSim(canvas, project, colors) {
     <label class="sb-slider">THROTTLE <input type="range" min="0" max="100" value="35"></label>`;
   const drsBtn = controls.querySelector('.sb-drs');
   const slider = controls.querySelector('input');
-  drsBtn.addEventListener('click', () => {
-    drs = !drs;
-    drsBtn.classList.toggle('is-on', drs);
-  });
+  drsBtn.addEventListener('click', () => { drs = !drs; drsBtn.classList.toggle('is-on', drs); });
   slider.addEventListener('input', () => { throttle = slider.value / 100; });
 
   function frame(dt, t) {
@@ -90,9 +85,8 @@ function createApexSim(canvas, project, colors) {
     if (acc > 0.05) {
       acc = 0;
       head = (head + 1) % N;
-      const target = 3200 + throttle * 6400 + Math.sin(t * 7) * 180 + Math.random() * 120;
-      rpm[head] = target;
-      speed = Math.min(drs ? 342 : 318, speed + (target / 90 - speed) * 0.08);
+      rpm[head] = 3200 + throttle * 6400 + Math.sin(t * 7) * 180 + Math.random() * 120;
+      speed = Math.min(drs ? 342 : 318, speed + (rpm[head] / 90 - speed) * 0.08);
       spd[head] = speed;
       ers[head] = clamp(0.45 + Math.sin(t * 1.7) * 0.3 - throttle * 0.15 + (drs ? 0.18 : 0), 0, 1);
       for (const s of sectors) {
@@ -103,180 +97,142 @@ function createApexSim(canvas, project, colors) {
     const { w, h } = fitter.fit();
     if (!w) return;
     g.clearRect(0, 0, w, h);
-    // grid
-    g.strokeStyle = 'rgba(255,255,255,0.05)';
-    g.lineWidth = 1;
-    for (let y = 0; y < h; y += 26) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
-    for (let x = 0; x < w; x += 40) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
-
+    g.strokeStyle = 'rgba(255,255,255,0.05)'; g.lineWidth = 1;
+    for (let y = 0; y < h; y += 24) { g.beginPath(); g.moveTo(0, y); g.lineTo(w, y); g.stroke(); }
+    for (let x = 0; x < w; x += 38) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h); g.stroke(); }
     const draw = (buf, min, max, color, lw) => {
       g.beginPath();
       for (let i = 0; i < N; i++) {
         const v = buf[(head + 1 + i) % N];
         const x = (i / (N - 1)) * w;
-        const y = h - 30 - ((v - min) / (max - min)) * (h - 70);
+        const y = h - 28 - ((v - min) / (max - min)) * (h - 62);
         if (i === 0) g.moveTo(x, y);
         else {
           const px = ((i - 1) / (N - 1)) * w;
-          const py = h - 30 - ((buf[(head + i) % N] - min) / (max - min)) * (h - 70);
+          const py = h - 28 - ((buf[(head + i) % N] - min) / (max - min)) * (h - 62);
           g.quadraticCurveTo(px, py, (px + x) / 2, (py + y) / 2);
         }
       }
       g.strokeStyle = color; g.lineWidth = lw;
-      g.shadowColor = color; g.shadowBlur = 8;
+      g.shadowColor = color; g.shadowBlur = 7;
       g.stroke(); g.shadowBlur = 0;
     };
-    draw(rpm, 2500, 10200, colors.sec, 1.6);
-    draw(spd, 0, 360, colors.acc, 1.4);
-    draw(ers, 0, 1, 'rgba(244,241,234,0.75)', 1.1);
-
-    // readouts
-    g.font = '10px "JetBrains Mono", monospace';
+    draw(rpm, 2500, 10200, colors.sec, 1.5);
+    draw(spd, 0, 360, colors.acc, 1.3);
+    draw(ers, 0, 1, 'rgba(244,241,234,0.72)', 1);
+    g.font = '9px "JetBrains Mono", monospace';
     g.fillStyle = colors.sec;
-    g.fillText(`RPM ${Math.round(rpm[head])}`, 12, 18);
+    g.fillText(`RPM ${Math.round(rpm[head])}`, 10, 14);
     g.fillStyle = colors.acc;
-    g.fillText(`SPD ${Math.round(spd[head])} KM/H`, 110, 18);
+    g.fillText(`SPD ${Math.round(spd[head])}`, 104, 14);
     g.fillStyle = 'rgba(244,241,234,0.8)';
-    g.fillText(`ERS ${(ers[head] * 100).toFixed(0)}%  DRS ${drs ? 'OPEN' : 'CLOSED'}`, 232, 18);
-    // sector deltas
-    let sx = w - 178;
+    g.fillText(`ERS ${(ers[head] * 100).toFixed(0)}% DRS ${drs ? 'OPEN' : 'CLOSED'}`, 176, 14);
+    let sx = w - 150;
     sectors.forEach((s, i) => {
       const d = s.cur - s.best;
       g.fillStyle = d < 0.08 ? '#3DFFA2' : d < 0.35 ? '#FFB45E' : '#FF3366';
-      g.fillText(`S${i + 1} ${s.cur.toFixed(2)} (${d >= 0 ? '+' : ''}${d.toFixed(2)})`, sx, 18);
-      sx += 62;
+      g.fillText(`S${i + 1}${d >= 0 ? '+' : ''}${d.toFixed(2)}`, sx, 14);
+      sx += 50;
     });
-    // process threads
-    const threads = 14;
-    const tw = (w - 24) / threads;
+    const threads = 13;
+    const tw = (w - 20) / threads;
     for (let i = 0; i < threads; i++) {
       const load = clamp(0.2 + throttle * 0.7 + Math.sin(t * 5 + i * 1.7) * 0.25, 0.05, 1);
-      const bh = 26 * load;
+      const bh = 20 * load;
       g.fillStyle = i % 4 === 0 ? colors.acc : 'rgba(244,241,234,0.4)';
-      g.fillRect(12 + i * tw, h - 12 - bh, tw - 4, bh);
+      g.fillRect(10 + i * tw, h - 10 - bh, tw - 4, bh);
     }
-    g.fillStyle = 'rgba(244,241,234,0.5)';
-    g.fillText(`KERNEL THREADS ${threads}/14 · LOAD ${(throttle * 100).toFixed(0)}%`, 12, h - 34);
   }
-  return { frame, controls, label: 'DRS · THROTTLE' };
+  return { frame, controls };
 }
 
 // ---- 2. STUDYPULSE: focus rhythm & cohort analytics sandbox ------------------
 function createStudyPulseSim(canvas, project, colors) {
   const g = canvas.getContext('2d');
   const fitter = simCtx(canvas);
-  const sprints = []; // {start, dur}
-  let streak = 0, ciLit = 0, wave = 0;
+  const sprints = [];
+  let streak = 0, wave = 0;
   const CI_NODES = 5;
 
   const controls = document.createElement('div');
   controls.className = 'sb-controls-row';
-  controls.innerHTML = `<span class="sb-hint-inline">CLICK THE CANVAS TO LAUNCH A POMODORO SPRINT</span>
-    <button type="button" class="sb-btn sb-sprint">[SPRINT 25:00]</button>`;
-  controls.querySelector('.sb-sprint').addEventListener('click', () => launch());
+  controls.innerHTML = `<span class="sb-hint-inline">CLICK THE CANVAS — LAUNCH A SPRINT</span>
+    <span class="sb-count">STREAK <b>0</b></span>`;
+  const countEl = controls.querySelector('b');
 
-  function launch() {
-    sprints.push({ start: performance.now() / 1000, dur: 8 });
-    streak++;
-  }
-  canvas.addEventListener('pointerdown', () => launch());
+  function launch() { sprints.push({ start: performance.now() / 1000, dur: 8 }); streak++; countEl.textContent = String(streak); }
+  canvas.addEventListener('pointerdown', launch);
 
   function frame(dt, t) {
     const { w, h } = fitter.fit();
     if (!w) return;
     g.clearRect(0, 0, w, h);
     wave += dt;
-    // focus session wave
     g.beginPath();
     for (let x = 0; x <= w; x += 4) {
       const u = x / w;
-      const y = h * 0.30
-        + Math.sin(u * 9 - wave * 1.4) * 16
-        + Math.sin(u * 23 - wave * 2.2) * 6
-        + (sprints.some(s => t - s.start < s.dur) ? Math.sin(u * 40 - wave * 6) * 6 : 0);
+      const y = h * 0.34
+        + Math.sin(u * 9 - wave * 1.4) * 12
+        + Math.sin(u * 23 - wave * 2.2) * 5
+        + (sprints.some(s => t - s.start < s.dur) ? Math.sin(u * 40 - wave * 6) * 5 : 0);
       if (x === 0) g.moveTo(x, y); else g.lineTo(x, y);
     }
-    g.strokeStyle = colors.sec; g.lineWidth = 1.8;
-    g.shadowColor = colors.sec; g.shadowBlur = 10;
+    g.strokeStyle = colors.sec; g.lineWidth = 1.6;
+    g.shadowColor = colors.sec; g.shadowBlur = 8;
     g.stroke(); g.shadowBlur = 0;
-
-    // active sprint arcs
     for (const s of sprints) {
       const age = t - s.start;
       if (age < s.dur) {
         const p = age / s.dur;
         g.beginPath();
-        g.arc(w - 56, h * 0.30, 22, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
-        g.strokeStyle = colors.acc; g.lineWidth = 3;
+        g.arc(w - 46, h * 0.34, 17, -Math.PI / 2, -Math.PI / 2 + p * Math.PI * 2);
+        g.strokeStyle = colors.acc; g.lineWidth = 2.5;
         g.stroke();
-        g.fillStyle = 'rgba(244,241,234,0.9)';
-        g.font = '10px "JetBrains Mono", monospace';
-        g.fillText(`${Math.ceil((s.dur - age) * 3.1)}s`, w - 66, h * 0.30 + 4);
       }
     }
-    // streak histogram
-    const bars = sprints.slice(-14);
-    const bw = Math.min(18, (w - 40) / 15);
+    const bars = sprints.slice(-12);
+    const bw = Math.min(14, (w - 36) / 13);
     bars.forEach((s, i) => {
-      const bh = 12 + ((i * 37) % 5) * 8 + (t - s.start < s.dur ? 26 : 0);
-      const x = 24 + i * (bw + 6);
-      const y = h - 40 - bh;
-      g.fillStyle = t - s.start < s.dur ? colors.acc : hexToRgba(colors.sec, 0.55);
-      g.fillRect(x, y, bw, bh);
+      const bh = 9 + ((i * 37) % 5) * 6 + (t - s.start < s.dur ? 20 : 0);
+      const x = 20 + i * (bw + 5);
+      g.fillStyle = t - s.start < s.dur ? colors.acc : hexToRgba(colors.sec, 0.5);
+      g.fillRect(x, h - 26 - bh, bw, bh);
     });
-    g.fillStyle = 'rgba(244,241,234,0.55)';
-    g.font = '9px "JetBrains Mono", monospace';
-    g.fillText('SESSION STREAK', 24, h - 26);
-    g.fillStyle = colors.sec;
-    g.font = 'bold 13px "JetBrains Mono", monospace';
-    g.fillText(`${streak}`, 150, h - 26);
-    // CI workflow nodes
-    const total = Math.floor(streak / 1);
     for (let i = 0; i < CI_NODES; i++) {
-      const x = w - 40 - (CI_NODES - 1 - i) * 44, y = h - 56;
-      const lit = i < (total % (CI_NODES + 1));
-      g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2);
+      const x = w - 30 - (CI_NODES - 1 - i) * 34, y = h - 40;
+      const lit = i < (streak % (CI_NODES + 1));
+      g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2);
       g.fillStyle = lit ? colors.acc : 'rgba(255,255,255,0.12)';
       g.fill();
-      if (i < CI_NODES - 1) {
-        g.beginPath(); g.moveTo(x + 8, y); g.lineTo(x + 36, y);
-        g.strokeStyle = lit ? hexToRgba(colors.acc, 0.7) : 'rgba(255,255,255,0.1)';
-        g.lineWidth = 1.4; g.stroke();
-      }
     }
-    g.fillStyle = 'rgba(244,241,234,0.5)';
-    g.font = '9px "JetBrains Mono", monospace';
-    g.fillText('CI WORKFLOW', w - 40 - (CI_NODES - 1) * 44, h - 40);
   }
-  return { frame, controls, label: 'CLICK = SPRINT' };
+  return { frame, controls };
 }
 
 // ---- 3. KAAMSAARTHI: live geo-matching network -------------------------------
 function createKaamSaarthiSim(canvas, project, colors) {
   const g = canvas.getContext('2d');
   const fitter = simCtx(canvas);
-  let W = 0, H = 0;
   const workers = [];
   {
     let s = 7;
     const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
-    for (let i = 0; i < 12; i++) workers.push({ x: 0.08 + rnd() * 0.84, y: 0.12 + rnd() * 0.76, pulse: 0, loads: Math.floor(rnd() * 5) });
+    for (let i = 0; i < 12; i++) workers.push({ x: 0.08 + rnd() * 0.84, y: 0.12 + rnd() * 0.76, pulse: 0 });
   }
-  const jobs = []; // {x, y, t, targets:[i], done}
+  const jobs = [];
   let matched = 0, autoT = 2;
+
+  const controls = document.createElement('div');
+  controls.className = 'sb-controls-row';
+  controls.innerHTML = `<span class="sb-hint-inline">CLICK THE MAP — DISPATCH A JOB</span>
+    <span class="sb-count">MATCHED <b>0</b></span>`;
+  const countEl = controls.querySelector('b');
 
   function spawn(x, y) {
     const scored = workers.map((wk, i) => ({ i, d: (wk.x - x) ** 2 + (wk.y - y) ** 2 }))
       .sort((a, b) => a.d - b.d).slice(0, 3);
     jobs.push({ x, y, t: 0, targets: scored.map(s => s.i) });
   }
-
-  const controls = document.createElement('div');
-  controls.className = 'sb-controls-row';
-  controls.innerHTML = `<span class="sb-hint-inline">CLICK THE MAP TO DISPATCH A JOB REQUEST</span>
-    <span class="sb-count">MATCHED <b>0</b></span>`;
-  const countEl = controls.querySelector('b');
-
   canvas.addEventListener('pointerdown', (e) => {
     const r = canvas.getBoundingClientRect();
     spawn((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
@@ -285,13 +241,10 @@ function createKaamSaarthiSim(canvas, project, colors) {
   function frame(dt, t) {
     const { w, h } = fitter.fit();
     if (!w) return;
-    W = w; H = h;
     g.clearRect(0, 0, w, h);
     autoT -= dt;
     if (autoT < 0) { autoT = 2.6 + Math.random() * 1.6; spawn(0.1 + Math.random() * 0.8, 0.15 + Math.random() * 0.7); }
-    // links between nearby workers
-    g.strokeStyle = hexToRgba(colors.acc, 0.14);
-    g.lineWidth = 1;
+    g.strokeStyle = hexToRgba(colors.acc, 0.13); g.lineWidth = 1;
     for (let i = 0; i < workers.length; i++) {
       for (let j2 = i + 1; j2 < workers.length; j2++) {
         const a = workers[i], b = workers[j2];
@@ -300,25 +253,21 @@ function createKaamSaarthiSim(canvas, project, colors) {
         }
       }
     }
-    // job arcs
     for (let k = jobs.length - 1; k >= 0; k--) {
       const j = jobs[k];
       j.t += dt * 1.4;
       if (j.t >= 1.35) {
-        matched++;
-        countEl.textContent = String(matched);
-        jobs.splice(k, 1);
-        continue;
+        matched++; countEl.textContent = String(matched);
+        jobs.splice(k, 1); continue;
       }
       for (const ti of j.targets) {
         const wk = workers[ti];
         const mx = (j.x + wk.x) / 2 + (wk.y - j.y) * 0.18;
         const my = (j.y + wk.y) / 2 - (wk.x - j.x) * 0.18;
         const p = Math.min(j.t, 1);
-        // partial quadratic bezier
         g.beginPath();
         g.moveTo(j.x * w, j.y * h);
-        const steps = 22;
+        const steps = 20;
         for (let s2 = 1; s2 <= steps * p; s2++) {
           const u = (s2 / steps) * p;
           const ix = (1 - u) * (1 - u) * j.x + 2 * (1 - u) * u * mx + u * u * wk.x;
@@ -326,37 +275,29 @@ function createKaamSaarthiSim(canvas, project, colors) {
           g.lineTo(ix * w, iy * h);
         }
         g.strokeStyle = j.t < 1 ? colors.sec : hexToRgba(colors.sec, 0.25);
-        g.lineWidth = 1.6;
-        g.shadowColor = colors.sec; g.shadowBlur = 6;
+        g.lineWidth = 1.4;
+        g.shadowColor = colors.sec; g.shadowBlur = 5;
         g.stroke(); g.shadowBlur = 0;
         if (j.t >= 1) wk.pulse = 1;
       }
-      // request node
-      g.beginPath(); g.arc(j.x * w, j.y * h, 4.5, 0, Math.PI * 2);
+      g.beginPath(); g.arc(j.x * w, j.y * h, 3.6, 0, Math.PI * 2);
       g.fillStyle = colors.sec; g.fill();
     }
-    // workers
     for (const wk of workers) {
       wk.pulse = Math.max(0, wk.pulse - dt * 1.8);
       const x = wk.x * w, y = wk.y * h;
       if (wk.pulse > 0) {
-        g.beginPath(); g.arc(x, y, 8 + (1 - wk.pulse) * 20, 0, Math.PI * 2);
+        g.beginPath(); g.arc(x, y, 6 + (1 - wk.pulse) * 14, 0, Math.PI * 2);
         g.strokeStyle = hexToRgba(colors.acc, wk.pulse * 0.8);
-        g.lineWidth = 1.6; g.stroke();
+        g.lineWidth = 1.3; g.stroke();
       }
-      g.beginPath(); g.arc(x, y, 5.5, 0, Math.PI * 2);
+      g.beginPath(); g.arc(x, y, 4.4, 0, Math.PI * 2);
       g.fillStyle = colors.acc;
-      g.shadowColor = colors.acc; g.shadowBlur = wk.pulse > 0 ? 12 : 0;
+      g.shadowColor = colors.acc; g.shadowBlur = wk.pulse > 0 ? 10 : 0;
       g.fill(); g.shadowBlur = 0;
-      g.fillStyle = 'rgba(4,6,10,0.9)';
-      g.font = '8px "JetBrains Mono", monospace';
-      g.fillText(String(wk.loads), x - 2, y + 3);
     }
-    g.fillStyle = 'rgba(244,241,234,0.5)';
-    g.font = '9px "JetBrains Mono", monospace';
-    g.fillText(`NETWORK: 12 WORKER NODES · SHORTEST-PATH DISPATCH`, 12, 16);
   }
-  return { frame, controls, label: 'CLICK = JOB PULSE' };
+  return { frame, controls };
 }
 
 // ---- 4. ASL: 21-keypoint hand neural visualizer -------------------------------
@@ -364,7 +305,6 @@ function createASLSim(canvas, project, colors) {
   const g = canvas.getContext('2d');
   const fitter = simCtx(canvas);
   const LETTERS = ['A', 'B', 'C', 'V', 'Y'];
-  // curls: [thumb, index, middle, ring, pinky] · 0 straight, 1 curled; spread
   const POSES = {
     A: { c: [0.1, 0.95, 0.95, 0.95, 0.95], s: 0.16 },
     B: { c: [0.9, 0.02, 0.02, 0.02, 0.02], s: 0.05 },
@@ -379,15 +319,13 @@ function createASLSim(canvas, project, colors) {
 
   const controls = document.createElement('div');
   controls.className = 'sb-controls-row';
-  controls.innerHTML = LETTERS.map(l => `<button type="button" class="sb-btn sb-asl" data-l="${l}">${l}</button>`).join('') +
+  controls.innerHTML = LETTERS.map(l => `<button type="button" class="sb-btn sb-asl${l === 'A' ? ' is-on' : ''}" data-l="${l}">${l}</button>`).join('') +
     `<span class="sb-conf">MATCH <b>—</b></span>`;
   const confEl = controls.querySelector('b');
   controls.querySelectorAll('.sb-asl').forEach(b => b.addEventListener('click', () => {
     target = b.dataset.l;
     controls.querySelectorAll('.sb-asl').forEach(x => x.classList.toggle('is-on', x === b));
   }));
-  controls.querySelector('.sb-asl').classList.add('is-on');
-
   canvas.addEventListener('pointermove', (e) => {
     const r = canvas.getBoundingClientRect();
     mouse.x = (e.clientX - r.left) / r.width;
@@ -397,20 +335,18 @@ function createASLSim(canvas, project, colors) {
   canvas.addEventListener('pointerleave', () => { mouse.active = false; });
 
   function joints(w, h) {
-    // morph current pose toward target
     const P = POSES[target];
     for (let i = 0; i < 5; i++) cur.c[i] += (P.c[i] - cur.c[i]) * 0.14;
     cur.s += (P.s - cur.s) * 0.14;
     const pts = new Array(21);
-    const palmX = w * (0.42 + (mouse.active ? (mouse.x - 0.5) * 0.10 : 0));
-    const palmY = h * (0.60 + (mouse.active ? (mouse.y - 0.5) * 0.08 : 0));
-    const scale = Math.min(w, h) * 0.0052;
+    const palmX = w * (0.40 + (mouse.active ? (mouse.x - 0.5) * 0.10 : 0));
+    const palmY = h * (0.62 + (mouse.active ? (mouse.y - 0.5) * 0.08 : 0));
+    const scale = Math.min(w, h) * 0.0050;
     pts[0] = [palmX, palmY + 46 * scale];
     pts[17] = [palmX - 26 * scale, palmY + 30 * scale];
     pts[13] = [palmX - 18 * scale, palmY + 6 * scale];
     pts[9] = [palmX - 6 * scale, palmY];
     pts[5] = [palmX + 10 * scale, palmY + 4 * scale];
-    // thumb chain
     const tCurl = cur.c[0];
     let a = -2.35 + tCurl * 0.9, ang = a;
     let x = pts[0][0] + 14 * scale, y = pts[0][1] - 8 * scale;
@@ -420,12 +356,11 @@ function createASLSim(canvas, project, colors) {
       x += Math.cos(ang) * 15 * scale; y += Math.sin(ang) * 15 * scale;
       pts[2 + s2] = [x, y];
     }
-    // four fingers
     const baseA = [-0.28, -0.1, 0.08, 0.26];
     for (let f = 0; f < 4; f++) {
       const bx = pts[5 + f * 4][0], by = pts[5 + f * 4][1];
       const spread = (baseA[f] - 0.5) * cur.s * 1.6;
-      const segLen = [17, 15, 13][0] * scale * (1 - f * 0.08);
+      const segLen = 17 * scale * (1 - f * 0.08);
       let fx = bx, fy = by, fang = -Math.PI / 2 + spread * 0.4;
       const curl = cur.c[f + 1];
       for (let s2 = 0; s2 < 3; s2++) {
@@ -442,44 +377,33 @@ function createASLSim(canvas, project, colors) {
     if (!w) return;
     g.clearRect(0, 0, w, h);
     const pts = joints(w, h);
-    // connections
     g.strokeStyle = hexToRgba(colors.sec, 0.9);
-    g.lineWidth = 2;
-    g.shadowColor = colors.sec; g.shadowBlur = 7;
+    g.lineWidth = 1.8;
+    g.shadowColor = colors.sec; g.shadowBlur = 6;
     for (const [a, b] of CONN) {
       g.beginPath(); g.moveTo(pts[a][0], pts[a][1]); g.lineTo(pts[b][0], pts[b][1]); g.stroke();
     }
     g.shadowBlur = 0;
-    // keypoints
     pts.forEach((p, i) => {
-      g.beginPath(); g.arc(p[0], p[1], i === 0 ? 6 : 4, 0, Math.PI * 2);
+      g.beginPath(); g.arc(p[0], p[1], i === 0 ? 5 : 3.4, 0, Math.PI * 2);
       g.fillStyle = i === 0 ? colors.acc : '#F4F1EA';
-      g.shadowColor = colors.acc; g.shadowBlur = 6;
       g.fill();
     });
-    g.shadowBlur = 0;
-    // confidence bars
     const conf = 0.90 + Math.abs(Math.sin(t * 2.2)) * 0.092;
     confEl.textContent = `${(conf * 100).toFixed(1)}% ${target}`;
     LETTERS.forEach((L, i) => {
-      const x = 16, y = h - 74 + i * 14;
+      const x = 12, y = h - 62 + i * 12;
       const v = L === target ? conf : Math.abs(Math.sin(t * 1.3 + i * 2.1)) * 0.34;
       g.fillStyle = 'rgba(255,255,255,0.08)';
-      g.fillRect(x + 26, y, 120, 7);
+      g.fillRect(x + 20, y, 96, 6);
       g.fillStyle = L === target ? colors.acc : 'rgba(244,241,234,0.4)';
-      g.fillRect(x + 26, y, 120 * v, 7);
+      g.fillRect(x + 20, y, 96 * v, 6);
       g.fillStyle = 'rgba(244,241,234,0.6)';
-      g.font = '9px "JetBrains Mono", monospace';
-      g.fillText(L, x, y + 7);
-      if (L === target) {
-        g.fillStyle = colors.acc;
-        g.fillText(`${(v * 100).toFixed(1)}% MATCH`, x + 156, y + 7);
-      }
+      g.font = '8px "JetBrains Mono", monospace';
+      g.fillText(L, x, y + 6);
     });
-    g.fillStyle = 'rgba(244,241,234,0.5)';
-    g.fillText('21-KEYPOINT SKELETON · MOVE CURSOR TO FLEX', 16, 16);
   }
-  return { frame, controls, label: 'A · B · C · V · Y' };
+  return { frame, controls };
 }
 
 // ---- 5. BIN SORTER: optical conveyor classifier -------------------------------
@@ -498,8 +422,8 @@ function createBinSorterSim(canvas, project, colors) {
 
   const controls = document.createElement('div');
   controls.className = 'sb-controls-row';
-  controls.innerHTML = `<span class="sb-hint-inline">CLICK THE BELT TO DROP AN ITEM</span>
-    <span class="sb-count">SORTED <b>0</b> · ACCURACY <i>—</i></span>`;
+  controls.innerHTML = `<span class="sb-hint-inline">CLICK THE BELT — DROP AN ITEM</span>
+    <span class="sb-count">SORTED <b>0</b> · <i>—</i></span>`;
   const sortedEl = controls.querySelector('b');
   const accEl = controls.querySelector('i');
 
@@ -513,54 +437,56 @@ function createBinSorterSim(canvas, project, colors) {
     const { w, h } = fitter.fit();
     if (!w) return;
     g.clearRect(0, 0, w, h);
-    const beltY = h * 0.52;
+    const beltY = h * 0.55;
     spawnT -= dt;
     if (spawnT < 0) {
       spawnT = 2.1 + Math.random();
       if (items.length < 9) items.push({ x: 0.04, type: Math.floor(Math.random() * 4), state: 'belt', t: 0, conf: 0.9 + Math.random() * 0.097 });
     }
-    // belt
     g.fillStyle = 'rgba(255,255,255,0.05)';
-    g.fillRect(10, beltY + 10, w - 20, 12);
-    for (let x = 10; x < w - 10; x += 18) {
-      const off = (t * 40) % 18;
+    g.fillRect(8, beltY + 8, w - 16, 10);
+    for (let x = 8; x < w - 8; x += 16) {
+      const off = (t * 34) % 16;
       g.fillStyle = 'rgba(255,255,255,0.10)';
-      g.fillRect(x + off, beltY + 12, 8, 2);
+      g.fillRect(x + off, beltY + 10, 7, 2);
     }
-    // scanner gate
     const sx = scannerX * w;
-    g.strokeStyle = colors.sec; g.lineWidth = 1.4;
-    g.strokeRect(sx - 26, beltY - 74, 52, 78);
+    g.strokeStyle = colors.sec; g.lineWidth = 1.2;
+    g.strokeRect(sx - 22, beltY - 58, 44, 62);
     g.fillStyle = hexToRgba(colors.sec, 0.06);
-    g.fillRect(sx - 26, beltY - 74, 52, 78);
+    g.fillRect(sx - 22, beltY - 58, 44, 62);
     g.fillStyle = colors.sec;
-    g.font = '8px "JetBrains Mono", monospace';
-    g.fillText('OPTIC SCAN', sx - 27, beltY - 80);
-    // bins
+    g.font = '7px "JetBrains Mono", monospace';
+    g.fillText('OPTIC SCAN', sx - 22, beltY - 63);
     TYPES.forEach((T, i) => {
-      const bx = w - 210 + i * 50;
+      const bx = w - 172 + i * 42;
       g.strokeStyle = hexToRgba(T.col, 0.8);
-      g.strokeRect(bx, beltY + 44, 42, 30);
+      g.strokeRect(bx, beltY + 36, 34, 24);
       g.fillStyle = hexToRgba(T.col, 0.9);
-      g.font = '7px "JetBrains Mono", monospace';
-      g.fillText(T.name.slice(0, 7), bx + 2, beltY + 42);
+      g.font = '6px "JetBrains Mono", monospace';
+      g.fillText(T.name.slice(0, 7), bx + 2, beltY + 34);
     });
-    // items
+    const drawItem = (it, x, y, glow) => {
+      const T = TYPES[it.type];
+      g.fillStyle = hexToRgba(T.col, glow ? 0.95 : 0.8);
+      g.shadowColor = T.col; g.shadowBlur = glow ? 8 : 2;
+      g.fillRect(x - 6, y - 6, 12, 12);
+      g.shadowBlur = 0;
+    };
     for (let k = items.length - 1; k >= 0; k--) {
       const it = items[k];
       if (it.state === 'belt') {
         it.x += dt * 0.055;
         if (it.x >= scannerX - 0.012) { it.state = 'scan'; it.t = 0; }
-        drawItem(it, it.x * w, beltY - 8);
+        drawItem(it, it.x * w, beltY - 7);
       } else if (it.state === 'scan') {
         it.t += dt;
-        drawItem(it, sx, beltY - 8);
-        // bounding box + label
+        drawItem(it, sx, beltY - 7);
         const T = TYPES[it.type];
-        g.strokeStyle = T.col; g.lineWidth = 1.4;
-        g.strokeRect(sx - 15, beltY - 26, 30, 20);
+        g.strokeStyle = T.col; g.lineWidth = 1.2;
+        g.strokeRect(sx - 12, beltY - 21, 24, 16);
         g.fillStyle = T.col;
-        g.fillText(`${T.name} ${(it.conf * 100).toFixed(1)}%`, sx - 20, beltY - 32);
+        g.fillText(`${T.name} ${(it.conf * 100).toFixed(1)}%`, sx - 16, beltY - 26);
         if (it.t > 0.7) {
           it.state = 'route'; it.t = 0;
           accSum += it.conf; accN++;
@@ -568,34 +494,18 @@ function createBinSorterSim(canvas, project, colors) {
         }
       } else if (it.state === 'route') {
         it.t += dt * 1.6;
-        const bx = w - 210 + it.type * 50 + 21;
+        const bx = w - 172 + it.type * 42 + 17;
         const u = Math.min(it.t, 1);
-        const x0 = sx, y0 = beltY - 8;
-        const x1 = bx, y1 = beltY + 44;
-        const cx2 = (x0 + x1) / 2, cy2 = Math.min(y0, y1) - 60;
+        const x0 = sx, y0 = beltY - 7, x1 = bx, y1 = beltY + 36;
+        const cx2 = (x0 + x1) / 2, cy2 = Math.min(y0, y1) - 46;
         const ix = (1 - u) * (1 - u) * x0 + 2 * (1 - u) * u * cx2 + u * u * x1;
         const iy = (1 - u) * (1 - u) * y0 + 2 * (1 - u) * u * cy2 + u * u * y1;
         drawItem(it, ix, iy, true);
-        if (it.t >= 1) {
-          items.splice(k, 1);
-          sorted++;
-          sortedEl.textContent = String(sorted);
-        }
+        if (it.t >= 1) { items.splice(k, 1); sorted++; sortedEl.textContent = String(sorted); }
       }
     }
-    g.fillStyle = 'rgba(244,241,234,0.5)';
-    g.font = '9px "JetBrains Mono", monospace';
-    g.fillText('CONVEYOR · CLASSIFY · ROUTE', 12, 16);
   }
-  function drawItem(it, x, y, glow) {
-    const T = TYPES[it.type];
-    g.beginPath();
-    g.rect(x - 8, y - 8, 16, 16);
-    g.fillStyle = hexToRgba(T.col, glow ? 0.95 : 0.8);
-    g.shadowColor = T.col; g.shadowBlur = glow ? 10 : 3;
-    g.fill(); g.shadowBlur = 0;
-  }
-  return { frame, controls, label: 'CLICK = DROP ITEM' };
+  return { frame, controls };
 }
 
 // ---- 6. FALLBACK: live dependency & architecture graph ------------------------
@@ -609,20 +519,26 @@ function createDepGraphSim(canvas, project, colors) {
   async function init(gh) {
     const tree = await gh.loadTree(project.name);
     const dirs = tree.filter(t => t.type === 'tree' && t.path.split('/').length <= 2).slice(0, 9);
-    const files = tree.filter(t => t.type !== 'tree').sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, 11);
+    const files = tree.filter(t => t.type !== 'tree').sort((a, b) => (b.size || 0) - (a.size || 0)).slice(0, 10);
     nodesG = [];
     const dirIdx = new Map();
     dirs.forEach((d, i) => {
       dirIdx.set(d.path, nodesG.length);
-      nodesG.push({ label: d.path.split('/').pop(), dir: true, x: 0.5, y: 0.24, tx: 0.12 + (i / Math.max(dirs.length - 1, 1)) * 0.76, ty: 0.16 + (i % 2) * 0.14, fixed: false });
+      nodesG.push({ label: d.path.split('/').pop(), dir: true, x: 0.5, y: 0.24, tx: 0.12 + (i / Math.max(dirs.length - 1, 1)) * 0.76, ty: 0.16 + (i % 2) * 0.14 });
     });
     files.forEach((f) => {
       const parent = f.path.split('/').slice(0, -1).join('/');
-      const pi = dirIdx.has(parent) ? dirIdx.get(parent) : (dirIdx.set('__root', nodesG.length), nodesG.push({ label: project.name, dir: true, x: 0.5, y: 0.2, tx: 0.5, ty: 0.12, fixed: false }), dirIdx.get('__root'));
+      let pi;
+      if (dirIdx.has(parent)) pi = dirIdx.get(parent);
+      else {
+        pi = nodesG.length;
+        dirIdx.set(parent || '__root', pi);
+        nodesG.push({ label: parent ? parent.split('/').pop() : project.name, dir: true, x: 0.5, y: 0.2, tx: 0.5, ty: 0.1 });
+      }
       nodesG.push({
-        label: f.path.split('/').pop().slice(0, 18), dir: false,
+        label: f.path.split('/').pop().slice(0, 16), dir: false,
         x: 0.2 + Math.random() * 0.6, y: 0.55 + Math.random() * 0.3,
-        tx: 0, ty: 0, anchor: pi, size: f.size || 0, vx: 0, vy: 0,
+        anchor: pi, vx: 0, vy: 0,
       });
     });
     nodesG.forEach((n, i) => { if (!n.dir) links.push([i, n.anchor]); });
@@ -648,20 +564,18 @@ function createDepGraphSim(canvas, project, colors) {
     nodesG[drag.i].y = clamp((e.clientY - r.top) / r.height + drag.oy, 0.05, 0.95);
     nodesG[drag.i].vx = 0; nodesG[drag.i].vy = 0;
   });
-  window.addEventListener('pointerup', up);
-  function up() { drag.i = -1; }
+  window.addEventListener('pointerup', () => { drag.i = -1; });
 
-  function frame(dt, t) {
+  function frame(dt) {
     const { w, h } = fitter.fit();
     if (!w) return;
     g.clearRect(0, 0, w, h);
     if (!ready) {
       g.fillStyle = 'rgba(244,241,234,0.55)';
-      g.font = '10px "JetBrains Mono", monospace';
-      g.fillText('INDEXING REPOSITORY GRAPH…', 16, 22);
+      g.font = '9px "JetBrains Mono", monospace';
+      g.fillText('INDEXING REPOSITORY GRAPH…', 14, 18);
       return;
     }
-    // spring physics
     for (const n of nodesG) {
       if (n.dir) {
         n.x += (n.tx - n.x) * Math.min(1, dt * 3);
@@ -683,7 +597,6 @@ function createDepGraphSim(canvas, project, colors) {
         n.y = clamp(n.y + n.vy * dt, 0.06, 0.96);
       }
     }
-    // links
     g.strokeStyle = hexToRgba(colors.acc, 0.35);
     g.lineWidth = 1;
     for (const [a, b] of links) {
@@ -692,56 +605,52 @@ function createDepGraphSim(canvas, project, colors) {
       g.lineTo(nodesG[b].x * w, nodesG[b].y * h);
       g.stroke();
     }
-    // nodes
     g.font = '8px "JetBrains Mono", monospace';
     nodesG.forEach((n) => {
       const x = n.x * w, y = n.y * h;
       if (n.dir) {
-        g.beginPath(); g.arc(x, y, 8, 0, Math.PI * 2);
-        g.fillStyle = colors.sec; g.shadowColor = colors.sec; g.shadowBlur = 8;
-        g.fill(); g.shadowBlur = 0;
+        g.beginPath(); g.arc(x, y, 7, 0, Math.PI * 2);
+        g.fillStyle = colors.sec; g.fill();
       } else {
         g.fillStyle = 'rgba(244,241,234,0.85)';
-        g.fillRect(x - 4, y - 4, 8, 8);
+        g.fillRect(x - 3.5, y - 3.5, 7, 7);
       }
-      g.fillStyle = n.dir ? colors.acc : 'rgba(244,241,234,0.55)';
-      g.fillText(n.label, x + 10, y + 3);
+      g.fillStyle = n.dir ? colors.acc : 'rgba(244,241,234,0.5)';
+      g.fillText(n.label, x + 9, y + 3);
     });
-    g.fillStyle = 'rgba(244,241,234,0.5)';
-    g.fillText('DRAG NODES — REAL FILE TREE SPRING GRAPH', 16, 16);
   }
-  return { frame, controls: null, label: 'DRAG NODES' };
+  return { frame, controls: null };
 }
 
 // ===========================================================================
-// MAIN SHOWCASE — scroll engine + chapters + chrome
+// MAIN SHOWCASE
 // ===========================================================================
 export function createShowcase(ctx) {
-  const { document: doc, shared, nodes, rig, quality, settings, isReducedMotion } = ctx;
+  const { document: doc, shared, nodes, matrix, rig, quality, settings, isReducedMotion } = ctx;
   const gh = new GitHubService();
   ctxShowcase.gh = gh;
 
   let projects = [];
-  let chapters = [];       // { project, el, track, top, height, prevP, built:{deep, sim}, sim, simKey }
+  let chapters = [];
   let docHeight = 1;
-  let activeIdx = -2;      // -1 hero, 0..n-1 chapter, n bento
+  let activeIdx = -2;
   let formationOverride = null;
   let paletteOverride = null;
   let boostPending = false;
   let laserTick = 0;
+  let userTouchedTabs = false;
 
-  // ---- inertial scroll state (exposed to main + shaders) --------------------
+  // ---- inertial scroll state -------------------------------------------------
   const scroll = {
     target: 0, current: 0,
-    velocity: 0,        // px — instantaneous target-current gap
-    velNorm: 0,         // signed normalized -1.5..1.5
-    progress: 0,        // whole-document 0..1
-    chapterFloat: 0,    // damped 0=hero … n+1=bento
-    chapterIndex: -1,   // -1 hero
+    velocity: 0,
+    velNorm: 0,
+    progress: 0,
+    chapterFloat: 0,
+    chapterIndex: -1,
     chapterP: 0,
   };
 
-  // ---- toasts -----------------------------------------------------------------
   function toast(msg, { ms = 2600 } = {}) {
     const box = $('toasts');
     const t = doc.createElement('div');
@@ -764,8 +673,10 @@ export function createShowcase(ctx) {
     if (gh.source === 'offline') toast('OFFLINE — MATRIX RUNNING ON CACHED DATA', { ms: 3600 });
     window.dispatchEvent(new CustomEvent('halcyon:projects-ready', { detail: { projects } }));
     measure();
-    applyScrollImmediate();
+    scroll.target = window.scrollY;
+    scroll.current = scroll.target;
   }
+  boot();
 
   function buildHero() {
     const langs = gh.languages().length;
@@ -795,6 +706,7 @@ export function createShowcase(ctx) {
       const cat = CATEGORIES[p.category] || CATEGORIES.Web;
       const idx = String(i + 1).padStart(2, '0');
       el.innerHTML = `
+        <div class="wm-num" aria-hidden="true">${idx}</div>
         <div class="track">
           <div class="stage">
             <div class="phase-a">
@@ -806,29 +718,31 @@ export function createShowcase(ctx) {
                   <span class="chip chip-lang">${esc(p.language)}</span>
                   <span class="chip">${fmtNum(p.stars)} STARS</span>
                   <span class="chip">${fmtSize(p.size)}</span>
-                  <span class="chip chip-ci">CI ${String(p.actions).toUpperCase()}</span>
                   <span class="chip chip-form">${FORMATION_LABELS[formIdx]}</span>
                 </div>
               </div>
-              <svg class="laser" viewBox="0 0 600 320" aria-hidden="true">
-                <path class="laser-path" d="M 30 44 H 264 L 306 108 H 560"></path>
-                <circle class="laser-dot" r="4"></circle>
+              <svg class="laser" viewBox="0 0 420 260" aria-hidden="true">
+                <path class="laser-path" d="M 20 30 H 190 L 226 96 H 400"></path>
+                <circle class="laser-dot" r="3.5"></circle>
               </svg>
             </div>
-            <div class="sandbox-wrap">
-              <div class="sandbox">
-                <div class="sb-head"><span class="sb-dot"></span>LIVE SIMULATION — <b class="sb-label">…</b><span class="sb-hint"></span></div>
-                <canvas class="sb-canvas"></canvas>
-                <div class="sb-controls"></div>
+            <div class="deck">
+              <span class="corner c-tl"><svg viewBox="0 0 12 12"><path d="M6 0v12M0 6h12"/></svg></span>
+              <span class="corner c-tr"><svg viewBox="0 0 12 12"><path d="M6 0v12M0 6h12"/></svg></span>
+              <span class="corner c-bl"><svg viewBox="0 0 12 12"><path d="M6 0v12M0 6h12"/></svg></span>
+              <span class="corner c-br"><svg viewBox="0 0 12 12"><path d="M6 0v12M0 6h12"/></svg></span>
+              <div class="deck-head"><span class="deck-dot"></span><b>${esc(p.name)}</b><span class="deck-live">LIVE PROOF</span></div>
+              <div class="deck-tabs" role="tablist">
+                <button class="deck-tab is-on" data-tab="sim" role="tab">SIMULATION</button>
+                <button class="deck-tab" data-tab="readme" role="tab">README</button>
+                <button class="deck-tab" data-tab="files" role="tab">FILES</button>
               </div>
-            </div>
-            <div class="phase-c">
-              <div class="pc-head">
-                <span class="pc-title">${esc(p.name)}</span>
-                <span class="pc-sub">DEEP ARCHITECTURE · REAL README · REAL FILE TREE</span>
-              </div>
-              <div class="pc-grid">
-                <div class="pc-col">
+              <div class="deck-panels">
+                <div class="dpanel is-on" data-panel="sim">
+                  <canvas class="sb-canvas"></canvas>
+                  <div class="sb-controls"></div>
+                </div>
+                <div class="dpanel" data-panel="readme">
                   <p class="pc-label">README FEATURES</p>
                   <ul class="pc-features"></ul>
                   <p class="pc-label">LANGUAGE COMPOSITION</p>
@@ -840,22 +754,19 @@ export function createShowcase(ctx) {
                   </div>
                   <div class="pc-clone"><code>git clone ${esc(p.cloneUrl)}</code><button type="button" class="pc-copy">COPY</button></div>
                 </div>
-                <div class="pc-col">
-                  <p class="pc-label">REPOSITORY FILE TREE</p>
+                <div class="dpanel" data-panel="files">
                   <div class="pc-tree"><div class="pc-tree-loading">INDEXING…</div></div>
                 </div>
               </div>
+              <div class="deck-beam"></div>
             </div>
           </div>
         </div>`;
       root.appendChild(el);
 
-      // split the chapter title into kinetic characters
       splitChars(el.querySelector('.ch-title'));
-
-      // laser path length (for the dash animation)
       const path = el.querySelector('.laser-path');
-      const len = path.getTotalLength ? path.getTotalLength() : 800;
+      const len = path.getTotalLength ? path.getTotalLength() : 640;
       path.style.strokeDasharray = String(len);
 
       const track = el.querySelector('.track');
@@ -864,13 +775,11 @@ export function createShowcase(ctx) {
         laserLen: len, laserDot: el.querySelector('.laser-dot'),
         titleEl: el.querySelector('.ch-title'),
         paLeft: el.querySelector('.pa-left'),
-        sandbox: el.querySelector('.sandbox-wrap'),
-        sandboxInner: el.querySelector('.sandbox'),
+        deck: el.querySelector('.deck'),
+        wmNum: el.querySelector('.wm-num'),
+        beam: el.querySelector('.deck-beam'),
         sbCanvas: el.querySelector('.sb-canvas'),
         sbControls: el.querySelector('.sb-controls'),
-        sbLabel: el.querySelector('.sb-label'),
-        sbHint: el.querySelector('.sb-hint'),
-        phaseC: el.querySelector('.phase-c'),
         featuresEl: el.querySelector('.pc-features'),
         langbarEl: el.querySelector('.pc-langbar'),
         langlegendEl: el.querySelector('.pc-langlegend'),
@@ -880,7 +789,6 @@ export function createShowcase(ctx) {
         palette: pal, formation: formIdx,
       };
 
-      // boost + copy wiring
       el.querySelector('.pc-boost').addEventListener('click', async (e) => {
         if (boostPending) return;
         boostPending = true;
@@ -895,15 +803,29 @@ export function createShowcase(ctx) {
         e.currentTarget.textContent = 'COPIED';
         setTimeout(() => { e.currentTarget.textContent = 'COPY'; }, 1400);
       });
+      const tabs = el.querySelectorAll('.deck-tab');
+      tabs.forEach(tb => tb.addEventListener('click', () => {
+        userTouchedTabs = true;
+        setDeckTab(chapter, tb.dataset.tab);
+      }));
       return chapter;
     });
+  }
+
+  function setDeckTab(ch, tab) {
+    ch.el.querySelectorAll('.deck-tab').forEach(b => {
+      const on = b.dataset.tab === tab;
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    ch.deck.querySelectorAll('.dpanel').forEach(pn =>
+      pn.classList.toggle('is-on', pn.dataset.panel === tab));
   }
 
   function splitChars(el) {
     if (!el) return;
     const text = el.textContent;
     el.textContent = '';
-    // group animated chars into word wrappers so lines still break at spaces
     const words = text.split(' ');
     let charIdx = 0;
     words.forEach((word, wi) => {
@@ -922,14 +844,13 @@ export function createShowcase(ctx) {
     });
   }
 
-  // ---- deep panel: features + language composition + real file tree ----------
+  // ---- deep panels: README features + language bar + real file tree -----------
   function buildDeep(ch) {
     if (ch.deepBuilt) return;
     ch.deepBuilt = true;
     const p = ch.project;
     const feats = (p.features && p.features.length) ? p.features : ['Documentation pending — open the repository for the full specification.'];
     ch.featuresEl.innerHTML = feats.map(f => `<li>${esc(f)}</li>`).join('');
-    // language composition: computed from the REAL repo file tree
     gh.loadTree(p.name).then(tree => {
       if (ch.treeBuilt || !tree.length) return;
       ch.treeBuilt = true;
@@ -941,21 +862,20 @@ export function createShowcase(ctx) {
         counts.set(ext, (counts.get(ext) || 0) + 1);
       }
       const entries = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
-      const total = entries.reduce((s, e) => s + e[1], 0) || 1;
+      const total2 = entries.reduce((s, e) => s + e[1], 0) || 1;
       const cols = [ch.palette.main, ch.palette.accent, '#4DA6FF', '#C9A2FF', '#F4F1EA'];
       ch.langbarEl.innerHTML = entries.map((e, i) =>
-        `<i style="width:${Math.max((e[1] / total) * 100, 3)}%;background:${cols[i % cols.length]}"></i>`).join('');
+        `<i style="width:${Math.max((e[1] / total2) * 100, 3)}%;background:${cols[i % cols.length]}"></i>`).join('');
       ch.langlegendEl.innerHTML = entries.map((e, i) => {
         const lang = EXT_LANG[e[0]] || ('.' + e[0]);
-        return `<span><i style="background:${cols[i % cols.length]}"></i>${esc(lang)} ${Math.round((e[1] / total) * 100)}%</span>`;
+        return `<span><i style="background:${cols[i % cols.length]}"></i>${esc(lang)} ${Math.round((e[1] / total2) * 100)}%</span>`;
       }).join('');
-      // compact real file tree
-      const dirs = tree.filter(t => t.type === 'tree').sort((a, b) => a.path.localeCompare(b.path)).slice(0, 10);
-      const files = tree.filter(t => t.type !== 'tree').sort((a, b) => a.path.localeCompare(b.path)).slice(0, 26);
+      const dirs = tree.filter(t => t.type === 'tree').sort((a, b) => a.path.localeCompare(b.path)).slice(0, 8);
+      const files = tree.filter(t => t.type !== 'tree').sort((a, b) => a.path.localeCompare(b.path)).slice(0, 24);
       const row = (item) => {
         const isDir = item.type === 'tree';
         const depth = Math.min(item.path.split('/').length - 1, 3);
-        return `<div class="pc-file${isDir ? ' is-dir' : ''}" style="--ind:${depth * 14}px">
+        return `<div class="pc-file${isDir ? ' is-dir' : ''}" style="--ind:${depth * 12}px">
           <span class="f-glyph">${isDir ? '▸' : '·'}</span>
           <span class="f-name">${esc(item.path.split('/').pop())}</span>
           <span class="f-size">${isDir ? '' : fmtSize(item.size || 0)}</span>
@@ -964,7 +884,7 @@ export function createShowcase(ctx) {
       ch.treeEl.innerHTML =
         `<div class="pc-tree-root"><b>${esc(p.name)}</b> · ${tree.length} ENTRIES · BRANCH ${esc(p.branch || 'main')}</div>` +
         dirs.map(row).join('') + files.map(row).join('') +
-        (tree.length > 36 ? `<div class="pc-tree-more">… ${tree.length - 36} more in the repository</div>` : '');
+        (tree.length > 32 ? `<div class="pc-tree-more">… ${tree.length - 32} more in the repository</div>` : '');
     }).catch(() => {
       ch.treeEl.innerHTML = '<div class="pc-tree-loading">TREE UNAVAILABLE — OFFLINE.</div>';
     });
@@ -974,11 +894,9 @@ export function createShowcase(ctx) {
   function ensureSim(ch) {
     if (ch.sim) return ch.sim;
     const def = simFor(ch.project.name);
-    ch.sbLabel.textContent = def.label;
     const sim = def.create(ch.sbCanvas, ch.project, { sec: ch.palette.main, acc: ch.palette.accent });
     if (sim.controls) ch.sbControls.appendChild(sim.controls);
     ch.sim = sim;
-    ch.simKey = def.key;
     return sim;
   }
 
@@ -996,6 +914,8 @@ export function createShowcase(ctx) {
       el.setAttribute('data-cursor-label', 'JUMP TO CHAPTER ↗');
       const cat = CATEGORIES[p.category] || CATEGORIES.Web;
       el.innerHTML = `
+        <span class="corner c-tl"><svg viewBox="0 0 12 12"><path d="M6 0v12M0 6h12"/></svg></span>
+        <span class="corner c-br"><svg viewBox="0 0 12 12"><path d="M6 0v12M0 6h12"/></svg></span>
         <div class="bento-glare"></div>
         <div class="bento-top"><span>${cat.label}</span><span>${esc(p.language)}</span></div>
         <h3 class="bento-name">${esc(p.name)}</h3>
@@ -1032,11 +952,9 @@ export function createShowcase(ctx) {
     });
   }
 
-  // draggable throwable tech stickers (Ollivere tactility)
   function wireStickers() {
-    const layer = doc.getElementById('sticker-layer');
     const section = $('bento-section');
-    if (!layer || !section || isReducedMotion()) return;
+    if (!section || isReducedMotion()) return;
     const seen = new Set();
     const terms = [];
     for (const p of projects) {
@@ -1052,8 +970,7 @@ export function createShowcase(ctx) {
       el.style.left = `${12 + i * 13}%`;
       el.style.top = `${8 + (i % 3) * 26}%`;
       section.appendChild(el);
-      const st = { el, x: 0, y: 0, vx: 0, vy: 0, held: false, trail: [] };
-      st.x = parseFloat(el.style.left); st.y = parseFloat(el.style.top);
+      const st = { el, x: parseFloat(el.style.left), y: parseFloat(el.style.top), vx: 0, vy: 0, held: false, trail: [] };
       el.addEventListener('pointerdown', (e) => {
         e.preventDefault();
         st.held = true;
@@ -1115,7 +1032,7 @@ export function createShowcase(ctx) {
     beam.className = 'rail-beam';
     beam.id = 'rail-beam';
     rail.appendChild(beam);
-    const mk = (label, sub, idx, fn) => {
+    const mk = (label, sub, fn) => {
       const b = doc.createElement('button');
       b.type = 'button';
       b.className = 'rail-node';
@@ -1123,13 +1040,11 @@ export function createShowcase(ctx) {
       b.innerHTML = `<i></i><span class="rn-label">${esc(label)}<em>${esc(sub)}</em></span>`;
       b.setAttribute('data-cursor-label', 'WARP');
       b.addEventListener('click', fn);
-      b.dataset.idx = String(idx);
       rail.appendChild(b);
-      return b;
     };
-    mk('CORE', 'HERO', -1, () => scrollToOffset(0));
-    chapters.forEach((ch, i) => mk(ch.project.name, `NODE ${String(i + 1).padStart(2, '0')}`, i, () => scrollToChapter(i)));
-    mk('MATRIX', 'BENTO DECK', chapters.length, () => scrollToOffset(docHeight - window.innerHeight - 4));
+    mk('CORE', 'HERO', () => scrollToOffset(0));
+    chapters.forEach((ch, i) => mk(ch.project.name, `NODE ${String(i + 1).padStart(2, '0')}`, () => scrollToChapter(i)));
+    mk('MATRIX', 'BENTO DECK', () => scrollToOffset(docHeight - window.innerHeight - 4));
   }
 
   // ---- chrome (clock, sound, palette button, keys) -----------------------------------
@@ -1342,7 +1257,7 @@ export function createShowcase(ctx) {
   }
 
   // ---- navigation ----------------------------------------------------------------------------
-  let navTween = null; // setTimeout handle — survives occluded/suspended rAF
+  let navTween = null;
   function scrollToOffset(y) {
     const to = clamp(y, 0, docHeight - window.innerHeight);
     const from = window.scrollY;
@@ -1366,26 +1281,21 @@ export function createShowcase(ctx) {
     scrollToOffset(ch.top + 4);
   }
 
-  // ---- measurement ------------------------------------------------------------------------------
   function measure() {
     docHeight = Math.max(document.documentElement.scrollHeight, window.innerHeight + 1);
+    const sy = window.scrollY;
     for (const ch of chapters) {
-      ch.top = ch.track.offsetTop;
-      ch.height = ch.track.offsetHeight;
+      const r = ch.track.getBoundingClientRect();
+      ch.top = r.top + sy;
+      ch.height = r.height;
     }
-  }
-  function applyScrollImmediate() {
-    scroll.target = window.scrollY;
-    scroll.current = scroll.target;
   }
 
   // ---- per-frame engine ---------------------------------------------------------------------------
-
   let lastDomWrite = 0;
   let laserFrame = 0;
 
   function frame(dt, now) {
-    // ---- inertial scroll proxy -------------------------------------------------
     scroll.target = window.scrollY || 0;
     const k = 1 - Math.pow(1 - SCROLL.DAMP, dt * 60);
     scroll.current += (scroll.target - scroll.current) * k;
@@ -1394,9 +1304,8 @@ export function createShowcase(ctx) {
     scroll.velNorm += (vn - scroll.velNorm) * Math.min(1, dt * 10);
     scroll.progress = clamp(scroll.current / Math.max(docHeight - window.innerHeight, 1), 0, 1);
 
-    // ---- active chapter ----------------------------------------------------------
     const vh = window.innerHeight;
-    let idx = -1; // -1 = hero
+    let idx = -1;
     let p = 0;
     if (chapters.length) {
       const first = chapters[0];
@@ -1404,7 +1313,7 @@ export function createShowcase(ctx) {
       if (scroll.current < first.top - vh * 0.35) {
         idx = -1;
       } else if (scroll.current > last.top + last.height - vh * 0.5) {
-        idx = chapters.length; // bento
+        idx = chapters.length;
       } else {
         for (let i = 0; i < chapters.length; i++) {
           const ch = chapters[i];
@@ -1414,94 +1323,83 @@ export function createShowcase(ctx) {
         if (idx === -1) { idx = chapters.length - 1; p = 1; }
         p = clamp(p, 0, 1);
       }
-    } else {
-      idx = -1;
     }
     if (idx !== activeIdx) {
-      // chapter change: swell + particle pulse + status chip
       if (activeIdx !== -2 && ctx.audio) ctx.audio.swell();
       if (nodes && idx >= 0 && idx < chapters.length) nodes.pulse(0.8);
+      if (matrix) matrix.setMode(idx >= 0 && idx < chapters.length ? chapters[idx].formation : 0);
+      if (nodes) nodes.setFormation(idx >= 0 && idx < chapters.length ? chapters[idx].formation : 0);
       activeIdx = idx;
       updateStatusChip();
     }
 
-    const chFloatTarget = idx + 1; // hero(-1)→0, chapter i→i+1, bento(n)→n+1
+    const chFloatTarget = idx + 1;
     scroll.chapterFloat += (chFloatTarget - scroll.chapterFloat) * Math.min(1, dt * 2.4);
     scroll.chapterIndex = idx;
     scroll.chapterP = idx >= 0 && idx < chapters.length ? p : 0;
 
-    // ---- palette + formation targets ---------------------------------------------
     let pal;
     let formT;
     if (paletteOverride) {
       pal = paletteOverride;
-      formT = formationOverride ?? (idx >= 0 && idx < chapters.length ? chapters[idx].formation : FORMATIONS.HERO);
+      formT = formationOverride ?? (idx >= 0 && idx < chapters.length ? chapters[idx].formation : 0);
     } else if (idx >= 0 && idx < chapters.length) {
       pal = chapters[idx].palette;
       formT = formationOverride ?? chapters[idx].formation;
     } else {
       pal = PALETTES.hero;
-      formT = formationOverride ?? FORMATIONS.HERO;
+      formT = formationOverride ?? 0;
     }
     dampColor(shared.uColorPrimary.value, pal.bg, dt);
     dampColor(shared.uColorSecondary.value, pal.main, dt);
     dampColor(shared.uColorAccent.value, pal.accent, dt);
     if (nodes) nodes.setFormation(formT);
 
-    // ---- UI accent variables --------------------------------------------------------
     const root = doc.documentElement;
     root.style.setProperty('--accent', pal.main);
     root.style.setProperty('--accent-2', pal.accent);
     root.style.setProperty('--ink-bg', pal.bg);
     root.style.setProperty('--accent-soft', hexToRgba(pal.main, 0.14));
 
-    // ---- velocity skew -----------------------------------------------------------------
     const skew = clamp(scroll.velocity * SCROLL.SKEW_FACTOR * 0.06, -SCROLL.SKEW_MAX, SCROLL.SKEW_MAX);
     root.style.setProperty('--scroll-skew', `${skew.toFixed(3)}deg`);
     root.style.setProperty('--scroll-prog', scroll.progress.toFixed(4));
 
-    // ---- chapter choreography (only the active chapter gets per-frame writes) --------
-    const quiet = Math.abs(scroll.velocity) < 0.08 && !paletteOverride && !formationOverride;
+    const quiet = Math.abs(scroll.velocity) < 0.08;
     if (!quiet || now - lastDomWrite > 500) {
       lastDomWrite = now;
       for (let i = 0; i < chapters.length; i++) {
         const ch = chapters[i];
         const isActive = i === idx;
         let cp = isActive ? p : clamp((scroll.current - ch.top) / Math.max(ch.height - vh, 1), 0, 1);
-        choreograph(ch, cp, isActive, dt);
-        // phase marker ticks (0.35 / 0.70)
+        choreograph(ch, cp, isActive);
         if (isActive) {
           if (ch.prevP < 0.35 && cp >= 0.35 && ctx.audio) ctx.audio.tick(1700);
           if (ch.prevP < 0.70 && cp >= 0.70 && ctx.audio) ctx.audio.tick(1150);
         }
         ch.prevP = cp;
       }
-      // rail progress + active node
       const beam = $('rail-beam');
       if (beam) beam.style.height = `${(scroll.progress * 100).toFixed(2)}%`;
-      const railNodes = $('rail').querySelectorAll('.rail-node');
-      railNodes.forEach((n, i) => {
+      $('rail').querySelectorAll('.rail-node').forEach((n, i) => {
         n.classList.toggle('is-active', i === idx + 1);
       });
     }
 
-    // ---- active simulation ------------------------------------------------------------
-    const simCh = (idx >= 0 && idx < chapters.length && p > 0.34 && p < 0.78) ? chapters[idx] : null;
+    const simCh = (idx >= 0 && idx < chapters.length && p > 0.34 && p < 0.85) ? chapters[idx] : null;
     if (simCh) {
       const sim = ensureSim(simCh);
       sim.frame(dt, now / 1000);
     }
 
-    // ---- stickers ----------------------------------------------------------------------
     if (stickers.length) stickerFrame(dt);
   }
 
   function choreograph(ch, p, isActive) {
-    // Phase A: kinetic title
+    // Phase A: kinetic title + laser trace
     const aOn = p > 0.02;
     ch.paLeft.classList.toggle('in', aOn);
     ch.titleEl.classList.toggle('in', aOn);
-    // laser trace
     const pa = clamp(p / 0.35, 0, 1);
     ch.laserPath.style.strokeDashoffset = String(ch.laserLen * (1 - pa));
     if (isActive && ++laserFrame % 3 === 0 && ch.laserPath.getPointAtLength) {
@@ -1511,41 +1409,48 @@ export function createShowcase(ctx) {
       ch.laserDot.style.opacity = pa > 0.01 && pa < 0.999 ? '1' : '0';
     }
 
-    // Phase B: sandbox unfold
-    const b = smooth(0.35, 0.52, p);
-    const wrap = ch.sandbox;
-    if (b > 0.001 && b < 0.999) {
-      wrap.style.opacity = b.toFixed(3);
-      wrap.style.transform = `perspective(1200px) rotateY(${((1 - b) * 62).toFixed(2)}deg) scale(${(0.9 + b * 0.1).toFixed(3)})`;
-      wrap.style.pointerEvents = b > 0.6 ? 'auto' : 'none';
-    } else {
-      wrap.style.opacity = b >= 0.999 ? '1' : '0';
-      wrap.style.transform = b >= 0.999 ? 'perspective(1200px) rotateY(0deg) scale(1)' : 'perspective(1200px) rotateY(62deg) scale(0.9)';
-      wrap.style.pointerEvents = b >= 0.999 && p < 0.74 ? 'auto' : 'none';
+    // giant watermark parallax: drifts up as the chapter progresses
+    if (ch.wmNum) {
+      ch.wmNum.style.transform = `translateY(${((0.5 - p) * 14).toFixed(2)}vh)`;
+      ch.wmNum.style.opacity = String(clamp(1 - Math.abs(p - 0.5) * 1.1, 0, 1));
     }
 
-    // Phase C: deep architecture sheet
+    // deck unfold (phase B) — rotateY reveal, never covering the sculpture
+    const b = smooth(0.35, 0.52, p);
+    const deck = ch.deck;
+    if (b > 0.001 && b < 0.999) {
+      deck.style.opacity = b.toFixed(3);
+      deck.style.transform = `perspective(1200px) rotateY(${((1 - b) * 58).toFixed(2)}deg) translateX(${((1 - b) * 40).toFixed(1)}px)`;
+      deck.style.pointerEvents = b > 0.6 ? 'auto' : 'none';
+    } else {
+      deck.style.opacity = b >= 0.999 ? '1' : '0';
+      deck.style.transform = b >= 0.999 ? 'perspective(1200px) rotateY(0deg) translateX(0px)' : 'perspective(1200px) rotateY(58deg) translateX(40px)';
+      deck.style.pointerEvents = b >= 0.999 ? 'auto' : 'none';
+    }
+
+    // phase C: deep dive — glowing beam sweeps the deck frame, README auto-tab
     const c = smooth(0.68, 0.84, p);
-    const pc = ch.phaseC;
     if (c > 0.001) buildDeep(ch);
-    pc.style.opacity = c.toFixed(3);
-    pc.style.transform = `translate3d(0, ${((1 - c) * 48).toFixed(1)}px, 0)`;
-    pc.style.pointerEvents = c > 0.5 ? 'auto' : 'none';
-    // sandbox recedes behind the deep sheet
-    const dim = 1 - smooth(0.68, 0.84, p) * 0.55;
-    ch.sandboxInner.style.filter = c > 0.01 ? `brightness(${(0.45 + dim * 0.55).toFixed(2)})` : '';
+    if (ch.beam) ch.beam.style.transform = `scaleX(${c.toFixed(3)})`;
+    if (isActive && c > 0.5 && !userTouchedTabs) setDeckTab(ch, 'readme');
+
+    // deck subtly lifts as the deep dive completes
+    if (c > 0.01 && c < 1) {
+      deck.style.filter = `brightness(${(1 + c * 0.18).toFixed(2)})`;
+    } else if (c >= 1) {
+      deck.style.filter = 'brightness(1.18)';
+    }
   }
 
   function updateStatusChip() {
     const el = $('status-node');
     if (!el) return;
     const total = String(chapters.length).padStart(2, '0');
-    if (activeIdx < 0) el.textContent = `—/${total}`;
+    if (activeIdx < 0) el.textContent = `CORE/${total}`;
     else if (activeIdx >= chapters.length) el.textContent = `MTX/${total}`;
     else el.textContent = `${String(activeIdx + 1).padStart(2, '0')}/${total}`;
   }
 
-  // ---- color damping helper -----------------------------------------------------------
   const tmpTarget = { r: 0, g: 0, b: 0 };
   function dampColor(color, hexOrCss, dt) {
     parseColor(hexOrCss, tmpTarget);
@@ -1555,6 +1460,8 @@ export function createShowcase(ctx) {
     color.b += (tmpTarget.b - color.b) * k;
   }
   const styleProbe = doc.createElement('div');
+  styleProbe.style.display = 'none';
+  doc.body.appendChild(styleProbe); // detached nodes compute to rgba(0,0,0,0)
   function parseColor(css, out) {
     styleProbe.style.color = css;
     const m = doc.defaultView.getComputedStyle(styleProbe).color.match(/[\d.]+/g);
@@ -1563,10 +1470,7 @@ export function createShowcase(ctx) {
     }
   }
 
-  // ---- public API -------------------------------------------------------------------------
-  boot();
-
-  const api = {
+  return {
     scroll,
     frame,
     measure,
@@ -1576,13 +1480,12 @@ export function createShowcase(ctx) {
     openPalette,
     closeTuner,
     toggleSound,
-    simActive: () => chapters.some((ch, i) => i === activeIdx && scroll.chapterP > 0.34 && scroll.chapterP < 0.78),
+    simActive: () => chapters.some((ch, i) => i === activeIdx && scroll.chapterP > 0.34 && scroll.chapterP < 0.85),
     get ready() { return projects.length > 0; },
     get focused() {
       return activeIdx >= 0 && activeIdx < chapters.length ? chapters[activeIdx].project : null;
     },
   };
-  return api;
 }
 
 // module-level handle so the fallback sim can reach the service instance
