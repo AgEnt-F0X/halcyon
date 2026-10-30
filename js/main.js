@@ -1,9 +1,9 @@
-// Halcyon — Architectural Core bootstrap: renderer (high-performance GPU,
-// pixel ratio locked at 1.0), matrix assembly, the render loop, the boot
-// sequence, keyboard shortcuts, visibility handling and the WebGL fallback.
+// HALCYON — Architectural Core bootstrap. Renderer locked to the discrete GPU
+// at pixel ratio 1.0, flow-field world, curl-noise stream, scroll-choreographed
+// camera, single render loop that also drives the DOM scrollytelling engine.
 
 import * as THREE from 'three';
-import { MATRIX, TIERS, clamp, loadSettings, saveSettings } from './config.js';
+import { TIERS, clamp, loadSettings, saveSettings } from './config.js';
 import { QualityManager } from './quality.js';
 import { createSharedUniforms } from './scene/materials.js';
 import { createMatrix } from './scene/matrix.js';
@@ -27,8 +27,8 @@ const canvas = $('scene');
 let renderer = null;
 let fallbackMode = false;
 try {
-  // force the discrete GPU on hybrid laptops, then lock the pixel ratio to
-  // 1.0 — resolution rescaling is the #1 stutter source on 920MX-class parts
+  // force the discrete GPU on hybrid laptops; the pixel ratio is LOCKED at
+  // 1.0 — runtime resolution rescaling is the #1 stutter source on 920MX parts
   renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: false,
@@ -36,19 +36,17 @@ try {
     stencil: false,
   });
   if (window.innerWidth && window.innerHeight) renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(1.0); // LOCKED — never rescaled at runtime
+  renderer.setPixelRatio(1.0);
 } catch {
   fallbackMode = true;
 }
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(MATRIX.bg);
 
-// the viewport can be 0×0 while the tab is hidden — fall back to a sane aspect
 const bootAspect = (window.innerWidth && window.innerHeight) ? window.innerWidth / window.innerHeight : 16 / 9;
-const camera = new THREE.PerspectiveCamera(MATRIX.fov, bootAspect, 0.5, 1500);
-camera.position.set(...MATRIX.camPos);
-camera.lookAt(...MATRIX.camTarget);
+const camera = new THREE.PerspectiveCamera(50, bootAspect, 0.5, 900);
+camera.position.set(0, 31, 98);
+camera.lookAt(0, 6, 0);
 
 const shared = createSharedUniforms();
 const ctx = {
@@ -58,7 +56,7 @@ const ctx = {
 
 // ---- world modules ----
 const matrix = createMatrix(ctx);
-const nodes = createNodes({ ...ctx, document });
+const nodes = createNodes(ctx);
 const rig = createCameraRig(ctx);
 const post = renderer ? createPost(ctx) : null;
 
@@ -80,81 +78,55 @@ function applyTierAll(tier) {
 // ---- quality ----
 const quality = new QualityManager(renderer, settings);
 ctx.quality = quality;
-quality.prLocked = true; // spec: pixelRatio locked at 1.0 — no dynamic rescaling
+quality.prLocked = true; // pixelRatio pinned at 1.0 — features step, pixels don't
 quality.onTierChange = (tier) => applyTierAll(tier);
 
 applyTierAll(TIERS.medium);
 if (settings.quality !== 'auto' && TIERS[settings.quality]) quality.setMode(settings.quality);
 
-// ---------- UI ----------
+// ---------- UI (scrollytelling engine + interactions) ----------
 ctx.settingsUI = null;
 const showcase = createShowcase(ctx);
 ctx.showcase = showcase;
 const interactions = createInteractions(ctx);
 void interactions;
 
-// ---------- showcase / matrix event bus ----------
-// the roster arrives async from the GitHub layer — build the racks then
+// rig needs the chapter count once the roster lands
 window.addEventListener('halcyon:projects-ready', (e) => {
-  const projects = (e.detail && e.detail.projects) || [];
-  nodes.build(projects);
-  applyTierAll(ctx.tier); // re-apply draw-range gating to the fresh geometry
-  const focused = ctx.showcase && ctx.showcase.focused;
-  if (focused) {
-    const idx = nodes.byName(focused.name);
-    if (idx >= 0) {
-      nodes.setActive(idx);
-      const anchor = nodes.getFocusAnchor(idx);
-      rig.focusNode(anchor);
-    }
+  const n = ((e.detail && e.detail.projects) || []).length;
+  if (n > 0) rig.registerChapters(n);
+});
+
+// ---------- scroll state (owned by showcase, consumed here) ----------
+// showcase.frame() updates: current/target/velocity/velNorm/progress/
+// chapterFloat/chapterIndex/chapterP + palette + formation targets.
+const scroll = showcase.scroll;
+const ptr = interactions.pointerTarget;
+const ptrSmooth = { x: 0, y: 0 };
+
+// ray from the camera through the cursor, intersected with the field plane
+const rayDir = new THREE.Vector3();
+const ndc = new THREE.Vector2();
+function updateMouseWorld() {
+  ndc.set(ptrSmooth.x, ptrSmooth.y);
+  rayDir.set(ndc.x, ndc.y, 0.5).unproject(camera).sub(camera.position).normalize();
+  const planeY = 8;
+  const denom = Math.abs(rayDir.y) < 1e-4 ? 1e-4 : rayDir.y;
+  const t = (planeY - camera.position.y) / denom;
+  if (t > 0 && t < 800) {
+    shared.uMouseWorld.value.set(
+      camera.position.x + rayDir.x * t,
+      planeY,
+      camera.position.z + rayDir.z * t,
+    );
   }
-});
-window.addEventListener('halcyon:project-select', (e) => {
-  const { project, index } = e.detail || {};
-  if (!project || typeof index !== 'number' || index < 0) return;
-  const anchor = nodes.getFocusAnchor(index);
-  if (!anchor) return;
-  nodes.setActive(index);
-  if (rig.isOrbit()) rig.setOrbit(false);
-  rig.focusNode(anchor);
-  rig.whipPan(0.65);
-  nodes.setFocusTarget(1);
-  clearTimeout(window.__focusDecay);
-  window.__focusDecay = setTimeout(() => nodes.setFocusTarget(0), 1400);
-  if (post) post.pulseChromatic(0.5);
-});
-window.addEventListener('halcyon:orbit-toggle', () => {
-  const on = rig.setOrbit(!rig.isOrbit());
-  if (on) {
-    const focusIdx = nodes.activeIndex;
-    if (focusIdx >= 0 && nodes.hitboxes[focusIdx]) {
-      const p = nodes.hitboxes[focusIdx].position;
-      rig.setOrbitPivot(new THREE.Vector3(p.x, 5, p.z), { radius: 20, homeAz: 0.3, homeEl: 0.42 });
-    } else {
-      rig.setOrbitPivot(new THREE.Vector3(0, 15, 0), { radius: 34, homeAz: 0.35, homeEl: 0.36 });
-    }
-  }
-  showcase.toast(on ? 'FREE ORBIT — DRAG · WHEEL ZOOMS' : 'MATRIX CAM RESTORED');
-});
-window.addEventListener('halcyon:zen-toggle', () => {
-  document.body.classList.toggle('zen');
-});
-window.addEventListener('halcyon:scan-all', () => {
-  nodes.pulseAll();
-  showcase.toast('SCAN PULSE — FULL MATRIX SWEEP');
-});
-// full-screen inspection modals can pause the WebGL loop entirely
-let renderPaused = false;
-window.addEventListener('halcyon:pause-render', (e) => {
-  renderPaused = !!(e.detail && e.detail.on);
-  setRunning(!renderPaused && !document.hidden);
-});
+}
 
 // ---------- resize / visibility ----------
 let resizeTimer = 0;
 function applySize() {
   const w = window.innerWidth, h = window.innerHeight;
-  if (!w || !h || !renderer) return; // degenerate size (hidden pane) — keep last good state
+  if (!w || !h || !renderer) return;
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
   renderer.setSize(w, h);
@@ -162,32 +134,17 @@ function applySize() {
 }
 function onResize() {
   clearTimeout(resizeTimer);
-  resizeTimer = setTimeout(applySize, 150);
-}
-// The viewport can be 0×0 while a tab is hidden; sync sizes cheaply every frame
-function syncSize() {
-  if (!renderer) return;
-  const w = window.innerWidth, h = window.innerHeight;
-  if (!w || !h) return;
-  if (Math.abs(camera.aspect - w / h) > 1e-4 || renderer.domElement.width !== w || renderer.domElement.height !== h) {
-    applySize();
-  }
+  resizeTimer = setTimeout(() => { applySize(); showcase.measure(); }, 150);
 }
 window.addEventListener('resize', onResize);
 
 let lastInteract = performance.now();
-['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart'].forEach(ev =>
+['pointerdown', 'pointermove', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(ev =>
   window.addEventListener(ev, () => { lastInteract = performance.now(); }, { passive: true }));
 
-let running = false;
-function setRunning(v) {
-  if (!renderer) return;
-  running = v;
-  renderer.setAnimationLoop(v ? loop : null);
-  if (v) { lastFrameTick = performance.now(); }
-}
 document.addEventListener('visibilitychange', () => {
-  setRunning(!document.hidden && !renderPaused);
+  if (document.hidden) quality.setThrottle(true);
+  else quality.setThrottle(false);
 });
 window.addEventListener('blur', () => quality.setThrottle(true));
 window.addEventListener('focus', () => quality.setThrottle(false));
@@ -200,74 +157,80 @@ function showFallback(on) {
   canvas.style.display = on ? 'none' : '';
   document.body.classList.toggle('no-webgl', on);
 }
-canvas.addEventListener('webglcontextlost', (e) => {
-  e.preventDefault();
+if (renderer) {
+  canvas.addEventListener('webglcontextlost', (e) => {
+    e.preventDefault();
+    showFallback(true);
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    showFallback(false);
+    if (post) post.onResize();
+  });
+} else {
   showFallback(true);
-  setRunning(false);
-});
-canvas.addEventListener('webglcontextrestored', () => {
-  showFallback(false);
-  if (post) post.onResize();
-  setRunning(true);
-});
-if (fallbackMode) showFallback(true);
+}
 
 // ---------- perf HUD ----------
 let lastSlow = 0;
-let lastSec = 0;
 function slowTick(nowMs) {
   if (nowMs - lastSlow < 250) return;
   lastSlow = nowMs;
-  if (nowMs - lastSec >= 1000) lastSec = nowMs;
   if (quality.hudVisible && renderer) $('hud').textContent = quality.hudText(renderer.info);
   const badge = $('fps-badge');
-  if (badge) badge.textContent = quality.badgeText();
+  if (badge) badge.textContent = renderer ? quality.badgeText() : 'UI MODE';
 }
 
-// ---------- main loop ----------
+// ---------- main loop (UI always runs; 3D renders when healthy) ----------
 let lastFrameTick = performance.now();
 let lastRender = 0;
-const ptrTarget = { x: 0, y: 0 };
-function loop() {
-  const nowMs = performance.now();
+
+function tick(nowMs) {
   const dtMs = Math.max(0, nowMs - lastFrameTick);
   lastFrameTick = nowMs;
   const dt = Math.min(dtMs / 1000, 0.05);
   const t = nowMs / 1000;
 
-  quality.frame(dtMs, nowMs);
-  // eco throttle: 24 FPS after 4 s without input (thermals), instant wake;
-  // never while a camera flight is mid-transition
-  const idle = (nowMs - lastInteract > 4000) && !rig.isTransitioning();
-  if (!quality.shouldRender(nowMs, lastRender, idle)) return;
+  if (renderer) quality.frame(dtMs, nowMs);
 
-  shared.uTime.value = t;
+  // showcase: scroll proxy, chapter choreography, sims, palette + formation
+  showcase.frame(dt, nowMs);
 
-  // pointer parallax: damp the cursor into the shader uniform
-  ptrTarget.x += (interactions.pointerTarget.x - ptrTarget.x) * Math.min(1, dt * 4.5);
-  ptrTarget.y += (interactions.pointerTarget.y - ptrTarget.y) * Math.min(1, dt * 4.5);
-  shared.uPointer.value.set(ptrTarget.x, ptrTarget.y);
+  // cursor field: damp NDC pointer, feed shaders + ray-plane world point
+  ptrSmooth.x += (ptr.x - ptrSmooth.x) * Math.min(1, dt * 5);
+  ptrSmooth.y += (ptr.y - ptrSmooth.y) * Math.min(1, dt * 5);
+  shared.uMouse.value.set(ptrSmooth.x, ptrSmooth.y);
+  updateMouseWorld();
 
-  syncSize();
-  rig.update(dt, t);
-  // velocity chromatic aberration: fast teleports feel cinematic
-  if (post) post.setVelocityAberration((ctx.tier.post ? 1 : 0) * clamp(rig.getFlightVelocity() / 45, 0, 1) * 0.45);
-  matrix.update(dt, t, camera);
-  nodes.update(dt, t, camera);
-  slowTick(nowMs);
+  // scroll velocity drives the shader warp + post aberration
+  shared.uScrollVelocity.value = scroll.velNorm;
+  if (post) post.setVelocityAberration((ctx.tier.post ? 1 : 0) * clamp(Math.abs(scroll.velNorm), 0, 1) * 0.5);
 
-  if (renderer) {
+  const idle = (nowMs - lastInteract > 5000) && !showcase.simActive();
+  const renderThisFrame = renderer && quality.shouldRender(nowMs, lastRender, idle);
+
+  if (renderThisFrame) {
+    shared.uTime.value = t;
+    rig.update(dt, t, scroll);
+    matrix.update(dt, t, camera);
+    nodes.update(dt, t, camera);
     renderer.info.reset();
     post.render(dt);
     lastRender = nowMs;
   }
+
+  slowTick(nowMs);
+}
+
+function loop() {
+  tick(performance.now());
+  requestAnimationFrame(loop);
 }
 
 // ---------- boot sequence ----------
 const BOOT_LINES = [
-  ['> mounting coordinate grid', 'OK'],
+  ['> compiling flow-field shaders', 'OK'],
+  ['> seeding 2,500-particle curl stream', 'OK'],
   ['> indexing AgEnt-F0X repositories', 'LIVE'],
-  ['> compiling shader family', 'OK'],
   ['> gpu: DISCRETE · dpr: LOCKED 1.0', 'OK'],
   ['> system status', 'ONLINE'],
 ];
@@ -280,16 +243,18 @@ function bootSequence() {
     `<div class="boot-line"><span class="boot-cursor"></span></div>`;
   document.body.appendChild(boot);
   const lines = boot.querySelectorAll('.boot-line');
-  lines.forEach((l, i) => setTimeout(() => l.classList.add('in'), 140 + i * 170));
+  lines.forEach((l, i) => setTimeout(() => l.classList.add('in'), 130 + i * 150));
 }
 bootSequence();
 
 function intro() {
   setTimeout(() => {
     document.body.classList.add('ready');
-    document.body.classList.remove('loading'); // retire the boot log overlay
-  }, 1150);
-  setTimeout(() => document.body.classList.add('ui-in'), 1500);
+    document.body.classList.remove('loading');
+    const boot = document.getElementById('boot');
+    if (boot) boot.remove();
+  }, 1250);
+  setTimeout(() => document.body.classList.add('ui-in'), 1550);
 }
 
 // ---------- keyboard: perf HUD ----------
@@ -301,30 +266,24 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+// ---------- settings persistence ----------
+window.addEventListener('halcyon:settings-change', () => saveSettings(settings));
+
 // ---------- boot ----------
 document.body.classList.toggle('reduced-motion', isReducedMotion());
 if (renderer) {
-  // warm-up frame behind the boot overlay, then start the loop
   renderer.info.autoReset = false;
+  applySize();
   renderer.compile(scene, camera);
   renderer.render(scene, camera);
   quality.startBenchmark();
-  setRunning(true);
 } else {
-  // no WebGL: run the UI-only cadence (badge shows static text)
-  setInterval(() => slowTick(performance.now()), 250);
   const badge = $('fps-badge');
   if (badge) badge.textContent = 'UI MODE';
 }
+showcase.measure();
+requestAnimationFrame(loop);
 intro();
-
-// ---------- settings persistence (quality mode only) ----------
-window.addEventListener('halcyon:quality-change', (e) => {
-  if (e.detail && TIERS[e.detail]) {
-    settings.quality = e.detail;
-    saveSettings(settings);
-  }
-});
 
 // ---------- PWA ----------
 if ('serviceWorker' in navigator &&

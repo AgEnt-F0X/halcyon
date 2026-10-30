@@ -1,5 +1,5 @@
-// Halcyon configuration — Infinite Architectural Core & System Matrix edition.
-// Identity constants, category accents, quality tiers and small math helpers.
+// HALCYON — Architectural Core configuration: identity, chapter palettes,
+// formation routing, quality tiers, scroll constants and math helpers.
 
 // ---------------------------------------------------------------------------
 // IDENTITY: Halcyon is the name of this website framework itself — it is NOT
@@ -20,38 +20,94 @@ export function isIdentityRepo(name) {
 }
 
 // ---------------------------------------------------------------------------
-// World constants of the matrix
+// Chapter palettes — the whole world (GLSL flow field, particle stream, UI
+// accents) morphs between these as the visitor scrolls between chapters.
+// [background ink, primary glow, secondary accent]
 // ---------------------------------------------------------------------------
-export const MATRIX = {
-  bg: 0x04060a,
-  fogColor: 0x04060a,
-  fogDensity: 0.0075,
-  camPos: [0, 26, 92],          // overview: high atrium shot of the core
-  camTarget: [0, 10, 0],
-  fov: 50,
-  gridHalf: 900,                // half-extent of the ground plane (shader grid)
-  nodeRadius: 46,               // spiral radius where project racks stand
-  nodeY: 7.2,                   // rack deck height
-  ringGap: 16,                  // radial gap between concentric node rings
-  ivory: 0xf4f1ea,
+export const PALETTES = {
+  hero:         { bg: '#06070A', main: '#F4F1EA', accent: '#E5A93C', label: 'OBSIDIAN' },
+  apex:         { bg: '#07080C', main: '#FF3366', accent: '#9D4EDD', label: 'APEX' },
+  studypulse:   { bg: '#060B14', main: '#00F5D4', accent: '#6366F1', label: 'FOCUS' },
+  kaamsaarthi:  { bg: '#0B0A09', main: '#F97316', accent: '#10B981', label: 'ROUTE' },
+  asl:          { bg: '#050A0E', main: '#10F587', accent: '#38BDF8', label: 'NEURAL' },
+  bin:          { bg: '#050B0A', main: '#2DD4BF', accent: '#F59E0B', label: 'OPTICS' },
+  posture:      { bg: '#070610', main: '#A78BFA', accent: '#34D399', label: 'POSTURE' },
+  playtime:     { bg: '#060A08', main: '#4ADE80', accent: '#F472B6', label: 'PLAYTIME' },
+  scribbl:      { bg: '#0A0709', main: '#F472B6', accent: '#60A5FA', label: 'SKETCH' },
 };
 
-// Category system: each project gets a functional domain and a cybernetic accent.
-export const CATEGORIES = {
-  'AI/ML':   { accent: '#3DFFA2', label: 'INTELLIGENCE' },   // terminal green
-  'Web':     { accent: '#4DA6FF', label: 'INTERFACE' },      // cyber blue
-  'Systems': { accent: '#FFB45E', label: 'APEX' },           // apex amber
-  'Creative':{ accent: '#C9A2FF', label: 'SYNTHESIS' },      // spectral violet
-};
-
-// Keyword routing: repo name/topics/language -> category.
-// Short keywords use word boundaries — 'art' must light up inside
-// 'kaamsarthi', and 'ai' must not match 'maintain'.
-const CATEGORY_RULES = [
-  { cat: 'AI/ML', kw: ['ai', 'ml', 'recognition', 'vision', 'neural', 'detector', 'classifier', 'opencv', 'pytorch', 'tensorflow', 'jupyter', 'sorter'] },
-  { cat: 'Systems', kw: ['os', 'engine', 'telemetry', 'runtime', 'kernel', 'apex', 'cli', 'server'] },
-  { cat: 'Creative', kw: ['scribbl', 'canvas', 'art', 'generative', 'creative', 'visual'] },
+const PALETTE_RULES = [
+  { key: 'apex',        kw: ['apex', 'f1', 'telemetry', 'race'] },
+  { key: 'studypulse',  kw: ['studypulse', 'study', 'pomodoro'] },
+  { key: 'kaamsaarthi', kw: ['kaamsaarthi', 'kaamsarthi', 'sarthi'] },
+  { key: 'asl',         kw: ['asl', 'recognition', 'hand', 'vision', 'sign'] },
+  { key: 'bin',         kw: ['bin', 'sorter', 'waste', 'optics'] },
+  { key: 'posture',     kw: ['posture'] },
+  { key: 'playtime',    kw: ['playtime', 'tracker', 'activity'] },
+  { key: 'scribbl',     kw: ['scribbl', 'sketch', 'canvas'] },
 ];
+
+function hashHue(name) {
+  let h = 5381;
+  const s = String(name || '').toLowerCase();
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
+// Any repo without a curated palette gets a distinct harmonious trio derived
+// from a hash hue (matching saturation/lightness craft of the curated ones).
+export function paletteFor(name, topics = []) {
+  const hay = [String(name || ''), ...topics.map(t => String(t))].join(' ').toLowerCase();
+  for (const r of PALETTE_RULES) {
+    if (r.kw.some(k => hay.includes(k))) return PALETTES[r.key];
+  }
+  const h = hashHue(name);
+  return {
+    bg: `hsl(${h}, 40%, 4%)`,
+    main: `hsl(${h}, 88%, 62%)`,
+    accent: `hsl(${(h + 42) % 360}, 82%, 60%)`,
+    label: 'SIGNAL',
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Curl-noise particle formations — one per chapter mood.
+// 0 hero vortex ribbon · 1 apex wind-tunnel · 2 study helix lattice
+// 3 kaamsaarthi geodesic network · 4 neural synapse cloud · 5 orbital ring field
+// ---------------------------------------------------------------------------
+export const FORMATIONS = {
+  HERO: 0, TUNNEL: 1, HELIX: 2, GEODESIC: 3, NEURAL: 4, ORBITAL: 5,
+};
+export const MAX_FORMATION = 5;
+
+const FORMATION_RULES = [
+  { f: 1, kw: ['apex', 'f1', 'telemetry', 'race', 'os'] },
+  { f: 2, kw: ['studypulse', 'study', 'pomodoro', 'focus'] },
+  { f: 3, kw: ['kaamsaarthi', 'kaamsarthi', 'sarthi', 'route', 'match'] },
+  { f: 4, kw: ['asl', 'recognition', 'hand', 'vision', 'sign', 'neural', 'ai', 'ml'] },
+  { f: 5, kw: ['bin', 'sorter', 'waste', 'optics'] },
+];
+
+export function formationFor(name, topics = [], language = '') {
+  const hay = [String(name || ''), ...topics.map(t => String(t)), String(language || '')].join(' ').toLowerCase();
+  for (const r of FORMATION_RULES) {
+    if (r.kw.some(k => hay.includes(k))) return r.f;
+  }
+  if (/python|jupyter/.test(hay)) return 4;
+  return 5;
+}
+
+export const FORMATION_LABELS = ['VORTEX RIBBON', 'WIND TUNNEL', 'HELIX LATTICE', 'GEODESIC NET', 'NEURAL CLOUD', 'ORBITAL FIELD'];
+
+// ---------------------------------------------------------------------------
+// Category system (chips / labels)
+// ---------------------------------------------------------------------------
+export const CATEGORIES = {
+  'AI/ML':   { accent: '#3DFFA2', label: 'INTELLIGENCE' },
+  'Web':     { accent: '#4DA6FF', label: 'INTERFACE' },
+  'Systems': { accent: '#FFB45E', label: 'APEX' },
+  'Creative':{ accent: '#C9A2FF', label: 'SYNTHESIS' },
+};
 
 const KW_CACHE = new Map();
 function kwMatches(hay, kw) {
@@ -64,6 +120,12 @@ function kwMatches(hay, kw) {
   return re.test(hay);
 }
 
+const CATEGORY_RULES = [
+  { cat: 'AI/ML', kw: ['ai', 'ml', 'recognition', 'vision', 'neural', 'detector', 'classifier', 'opencv', 'pytorch', 'tensorflow', 'jupyter', 'sorter'] },
+  { cat: 'Systems', kw: ['os', 'engine', 'telemetry', 'runtime', 'kernel', 'apex', 'cli', 'server'] },
+  { cat: 'Creative', kw: ['scribbl', 'canvas', 'art', 'generative', 'creative', 'visual'] },
+];
+
 export function categoryFor(name, topics = [], language = '') {
   const hay = [String(name || ''), ...topics.map(t => String(t)), String(language || '')].join(' ');
   for (const r of CATEGORY_RULES) {
@@ -75,7 +137,7 @@ export function categoryFor(name, topics = [], language = '') {
   return 'Web';
 }
 
-// Curated overrides for known repositories (case-insensitive via lookup()).
+// Curated taglines/stacks for known repositories (offline seed + polish).
 export const FEATURED_PROJECTS = {
   'StudyPulse': {
     tagline: 'Premium lightweight game activity & playtime tracking for desktops',
@@ -112,16 +174,25 @@ export const FEATURED_PROJECTS = {
 };
 
 // ---------------------------------------------------------------------------
-// Quality tiers — matrix edition. Draw calls are already tiny (batched grid,
-// racks, beams and particles), so tiers mainly gate particle counts, the
-// distant skyline, node detail and the post pass. Pixel ratio is LOCKED at
-// 1.0 globally (hybrid-GPU laptops stutter on resolution rescaling).
+// Quality tiers — matrix edition. The pixel ratio is LOCKED at 1.0 globally;
+// tiers gate particle counts, ribbon tessellation and the post pass.
 // ---------------------------------------------------------------------------
 export const TIERS = {
-  potato: { name: 'Potato', pr: 1.0, post: false, msaa: 0, particles: 140, nodes: 0.5, skyline: 0,  beams: false, cap30: true,  shadows: false },
-  low:    { name: 'Low',    pr: 1.0, post: false, msaa: 0, particles: 260, nodes: 0.75, skyline: 10, beams: false, cap30: false, shadows: false },
-  medium: { name: 'Medium', pr: 1.0, post: true,  msaa: 0, particles: 420, nodes: 1.0,  skyline: 18, beams: true,  cap30: false, shadows: false },
-  high:   { name: 'High',   pr: 1.0, post: true,  msaa: 4, particles: 640, nodes: 1.0,  skyline: 30, beams: true,  cap30: false, shadows: false },
+  potato: { name: 'Potato', pr: 1.0, post: false, msaa: 0, particles: 900,  ribbon: [70, 34],  fbmOct: 2, cap30: true,  shadows: false },
+  low:    { name: 'Low',    pr: 1.0, post: false, msaa: 0, particles: 1600, ribbon: [120, 60],  fbmOct: 2, cap30: false, shadows: false },
+  medium: { name: 'Medium', pr: 1.0, post: true,  msaa: 0, particles: 2500, ribbon: [180, 90],  fbmOct: 3, cap30: false, shadows: false },
+  high:   { name: 'High',   pr: 1.0, post: true,  msaa: 4, particles: 2500, ribbon: [220, 110], fbmOct: 4, cap30: false, shadows: false },
+};
+
+// ---------------------------------------------------------------------------
+// Scroll engine constants
+// ---------------------------------------------------------------------------
+export const SCROLL = {
+  DAMP: 0.085,          // currentScroll += (target - current) * DAMP per frame
+  SKEW_FACTOR: 0.04,    // deg of skew per px of scroll velocity
+  SKEW_MAX: 2.5,        // deg clamp
+  VELOCITY_NORM: 1800,  // px/s at which shader velocity saturates
+  TRACK_VH: 240,        // per-chapter scroll track height in vh
 };
 
 // ---------------------------------------------------------------------------
@@ -131,7 +202,6 @@ export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const lerp = (a, b, t) => a + (b - a) * t;
 export const smooth = (a, b, v) => { const t = clamp((v - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
 
-// Frame-rate-independent damping: value += (target - value) * (1 - exp(-lambda * dt))
 export function damp(value, target, lambda, dt) {
   return value + (target - value) * (1 - Math.exp(-lambda * dt));
 }
@@ -142,7 +212,6 @@ export function hexToRgba(hex, a) {
   return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
 }
 
-// Deterministic RNG so the matrix is identical on every load.
 export function mulberry32(seed) {
   let s = seed >>> 0;
   return function () {
@@ -156,11 +225,14 @@ export function mulberry32(seed) {
 // ---------------------------------------------------------------------------
 // Persisted settings
 // ---------------------------------------------------------------------------
-const KEY = 'halcyon.settings.v2';
+const KEY = 'halcyon.settings.v3';
 
 export const DEFAULT_SETTINGS = {
-  quality: 'auto',       // auto | potato | low | medium | high
+  quality: 'auto',
   reducedMotion: null,   // null = follow prefers-reduced-motion
+  sound: false,
+  turbulence: 1,
+  waveSpeed: 1,
 };
 
 export function loadSettings() {
